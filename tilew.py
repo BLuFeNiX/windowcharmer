@@ -25,15 +25,36 @@ class ScreenDimensions:
 
 # TODO locking
 class Config:
-    def __init__(self, config_file='/dev/shm/tilew_state.v2.shelf'):
+    def __init__(self, screen_width, active_desktop, config_file='/dev/shm/tilew_state.v2.shelf'):
+        self.screen_width = screen_width
+        self.active_desktop = active_desktop
         self.config_file = config_file
-        with shelve.open(self.config_file) as config:
-            self.measured_height = config.get('measured_height', None)
-            self.measured_decorations = config.get('measured_decorations', 0)
+        self.supported_ratios = [
+            0,       # only 2 columns
+            (3/9),   # 3 even columns
+            (4/10),  # 40% center
+            (5/10),  # 50% center
+            (6/10),  # 60% center
+        ]
+        self.reload()
 
     def put(self, k, v):
         with shelve.open(self.config_file) as config:
             config[k] = v
+
+    def reload(self):
+        with shelve.open(self.config_file) as config:
+            self.measured_height = config.get('measured_height', None)
+            self.measured_decorations = config.get('measured_decorations', 0)
+            self.ratio_idx = config.get(f'ratio_idx_{self.active_desktop}', 2)
+            self.ratio = self.supported_ratios[self.ratio_idx]
+            self.center_width = int(self.screen_width * self.ratio)
+            # self.WIDTH_CHOICE = config.get(str(self.active_desktop), 1)  # default to 3 equal columns
+
+    def next_ratio(self, step=1):
+        self.ratio_idx = (self.ratio_idx + len(self.supported_ratios) + step) % len(self.supported_ratios)
+        self.put(f'ratio_idx_{self.active_desktop}', self.ratio_idx)
+        self.reload()
 
 class AtomCache:
     def __init__(self, display):
@@ -63,7 +84,7 @@ class AtomCache:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
 class WindowManager:
-    def __init__(self, config_file='/dev/shm/tilew_state.v2'):
+    def __init__(self):
         self.d = display.Display()
         self.atom = AtomCache(self.d)
         screen = self.d.screen()
@@ -72,21 +93,18 @@ class WindowManager:
         self.screenHeight = screen.height_in_pixels
         self.active_desktop = self.get_active_desktop()
         self.active_window = self.get_active_window()
-        self.config_file = config_file
-        self.config = self.load_config()
-        self.config2 = Config()
-        self.update_dimensions()
+        self.config = Config(self.screenWidth, self.active_desktop)
         self.maybe_measure(self.active_window)
-        self.dim = ScreenDimensions(self.screenHeight, self.screenWidth, self.CENTER_WIDTH, self.config2.measured_height, self.config2.measured_decorations)
+        self.dim = ScreenDimensions(self.screenHeight, self.screenWidth, self.config.center_width, self.config.measured_height, self.config.measured_decorations)
 
     def maybe_measure(self, window):
         if self.is_window_maximized_vertically(window):
             if not self.get_gtk_frame_extents(window):
                 h, d = self.measure_window(window)
-                if h != self.config2.measured_height:
-                    self.config2.put('measured_height', h)
-                if d != self.config2.measured_decorations:
-                    self.config2.put('measured_decorations', d)
+                if h != self.config.measured_height:
+                    self.config.put('measured_height', h)
+                if d != self.config.measured_decorations:
+                    self.config.put('measured_decorations', d)
 
     def measure_window(self, window):
         # Get the window geometry without decorations
@@ -104,31 +122,6 @@ class WindowManager:
             decoration_height = 0
 
         return geom.height, decoration_height
-
-    def load_config(self):
-        self.SUPPORTED_WIDTHS = [
-            0,                              # only 2 columns
-            self.screenWidth // 3,          # 3 even columns
-            int(self.screenWidth * 4 / 10),
-            int(self.screenWidth * 5 / 10),
-            int(self.screenWidth * 6 / 10),
-        ]
-        try:
-            with open(self.config_file, 'r') as f:
-                config = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            config = {}
-        self.WIDTH_CHOICE = config.get(str(self.active_desktop), 1)  # default to 3 equal columns
-        return config
-
-    def save_config(self):
-        self.config[str(self.active_desktop)] = self.WIDTH_CHOICE
-        with open(self.config_file, 'w') as f:
-            json.dump(self.config, f)
-
-    def update_dimensions(self):
-        self.CENTER_WIDTH = self.SUPPORTED_WIDTHS[self.WIDTH_CHOICE]
-        self.SIDE_WIDTH = (self.screenWidth - self.CENTER_WIDTH) // 2
 
     def get_active_desktop(self):
         property = self.root.get_full_property(self.atom.desktop, X.AnyPropertyType)
@@ -215,17 +208,17 @@ class WindowManager:
         self.move_and_resize(window, self.dim.x_right, self.dim.y_bottom, self.dim.w_side, self.dim.h_half)
 
     def center(self, window):
-        if self.WIDTH_CHOICE != 0:
+        if self.config.center_width > 0:
             self.set_max_flags(window, 1, 0)
             self.move_and_resize(window, self.dim.x_center, self.dim.y_top, self.dim.w_center, self.dim.h_full)
 
     def top_center(self, window):
-        if self.WIDTH_CHOICE != 0:
+        if self.config.center_width > 0:
             self.set_max_flags(window, 0, 0)
             self.move_and_resize(window, self.dim.x_center, self.dim.y_top, self.dim.w_center, self.dim.h_half)
 
     def bottom_center(self, window):
-        if self.WIDTH_CHOICE != 0:
+        if self.config.center_width > 0:
             self.set_max_flags(window, 0, 0)
             self.move_and_resize(window, self.dim.x_center, self.dim.y_bottom, self.dim.w_center, self.dim.h_half)
 
@@ -236,14 +229,10 @@ class WindowManager:
         self.set_max_flags(window, 0, 0)
 
     def bigger(self):
-        self.WIDTH_CHOICE = (self.WIDTH_CHOICE + 1) % len(self.SUPPORTED_WIDTHS)
-        self.update_dimensions()
-        self.save_config()
+        self.config.next_ratio()
 
     def smaller(self):
-        self.WIDTH_CHOICE = (self.WIDTH_CHOICE - 1 + len(self.SUPPORTED_WIDTHS)) % len(self.SUPPORTED_WIDTHS)
-        self.update_dimensions()
-        self.save_config()
+        self.config.next_ratio(-1)
 
     def is_window_maximized_vertically(self, window):
         state = window.get_full_property(self.atom.state, X.AnyPropertyType)        
@@ -284,7 +273,7 @@ def main():
 
     # Map action names to functions
     wm = WindowManager()
-    actions = {
+    win_actions = {
         'left': wm.left,
         'center': wm.center,
         'right': wm.right,
@@ -298,15 +287,20 @@ def main():
         'restore': wm.restore,
         # 'cycle': action_cycle,
         # 'install': action_install,
-        'bigger': wm.bigger,
-        'smaller': wm.smaller,
         'test': wm.test,
     }
 
+    desk_actions = {
+        'bigger': wm.bigger,
+        'smaller': wm.smaller,
+    }
+
     # Call the corresponding function based on the action argument
-    if args.action in actions:
-        actions[args.action](wm.active_window)
+    if args.action in win_actions:
+        win_actions[args.action](wm.active_window)
         wm.flush()
+    elif args.action in desk_actions:
+        desk_actions[args.action]()
     else:
         print(f"Invalid action: {args.action}")
 
