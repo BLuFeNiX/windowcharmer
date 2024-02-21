@@ -76,25 +76,25 @@ class WindowManager:
         self.config = self.load_config()
         self.config2 = Config()
         self.update_dimensions()
-        self.maybe_measure()
+        self.maybe_measure(self.active_window)
         self.dim = ScreenDimensions(self.screenHeight, self.screenWidth, self.CENTER_WIDTH, self.config2.measured_height, self.config2.measured_decorations)
 
-    def maybe_measure(self):
-        if self.is_window_maximized_vertically():
-            if not self.get_gtk_frame_extents():
-                h, d = self.measure_window()
+    def maybe_measure(self, window):
+        if self.is_window_maximized_vertically(window):
+            if not self.get_gtk_frame_extents(window):
+                h, d = self.measure_window(window)
                 if h != self.config2.measured_height:
                     self.config2.put('measured_height', h)
                 if d != self.config2.measured_decorations:
                     self.config2.put('measured_decorations', d)
 
-    def measure_window(self):
+    def measure_window(self, window):
         # Get the window geometry without decorations
-        geom = self.active_window.get_geometry()
+        geom = window.get_geometry()
         undecorated_height = geom.height
 
         # Try to get frame extents (decorations)
-        frame_extents = self.active_window.get_full_property(self.atom.extents, X.AnyPropertyType)
+        frame_extents = window.get_full_property(self.atom.extents, X.AnyPropertyType)
         if frame_extents:
             _, _, top, bottom = frame_extents.value
             # The decoration height is the sum of the top and bottom parts
@@ -142,7 +142,7 @@ class WindowManager:
         # check if the window has GTK Frame Extents
         #  this is providing some hints about how much space around the window is actually not part of the window content
         #  ex: used for drop shadows
-        gtk_fe = self.get_gtk_frame_extents()
+        gtk_fe = self.get_gtk_frame_extents(window)
         if gtk_fe:
             # grow the dimensions by the amount of extra padding
             # and be sure to add the decor height
@@ -175,11 +175,11 @@ class WindowManager:
         window.configure(value_mask=value_mask, x=x, y=y, width=width, height=height)
         self.d.flush()
 
-    def set_max_flags(self, v=1, h=1):
+    def set_max_flags(self, window, v=1, h=1):
         data = [v, self.atom.v_max, 0, 0, 0]
-        self.send_client_message(self.active_window, self.atom.state, data)
+        self.send_client_message(window, self.atom.state, data)
         data = [h, self.atom.h_max, 0, 0, 0]
-        self.send_client_message(self.active_window, self.atom.state, data)
+        self.send_client_message(window, self.atom.state, data)
 
     def send_client_message(self, window, atom, data):
         event = protocol.event.ClientMessage(window=window, client_type=atom, data=(32, data))
@@ -190,50 +190,50 @@ class WindowManager:
     def flush(self):
         self.d.flush()
 
-    def left(self):
-        self.set_max_flags(1, 0)
-        self.move_and_resize(self.active_window, self.dim.x_left, self.dim.y_top, self.dim.w_side, self.dim.h_full)
+    def left(self, window):
+        self.set_max_flags(window, 1, 0)
+        self.move_and_resize(window, self.dim.x_left, self.dim.y_top, self.dim.w_side, self.dim.h_full)
 
-    def right(self):
-        self.set_max_flags(1, 0)
-        self.move_and_resize(self.active_window, self.dim.x_right, self.dim.y_top, self.dim.w_side, self.dim.h_full)
+    def right(self, window):
+        self.set_max_flags(window, 1, 0)
+        self.move_and_resize(window, self.dim.x_right, self.dim.y_top, self.dim.w_side, self.dim.h_full)
 
-    def top_left(self):
-        self.set_max_flags(0, 0)
-        self.move_and_resize(self.active_window, self.dim.x_left, self.dim.y_top, self.dim.w_side, self.dim.h_half)
+    def top_left(self, window):
+        self.set_max_flags(window, 0, 0)
+        self.move_and_resize(window, self.dim.x_left, self.dim.y_top, self.dim.w_side, self.dim.h_half)
 
-    def bottom_left(self):
-        self.set_max_flags(0, 0)
-        self.move_and_resize(self.active_window, self.dim.x_left, self.dim.y_bottom, self.dim.w_side, self.dim.h_half)
+    def bottom_left(self, window):
+        self.set_max_flags(window, 0, 0)
+        self.move_and_resize(window, self.dim.x_left, self.dim.y_bottom, self.dim.w_side, self.dim.h_half)
 
-    def top_right(self):
-        self.set_max_flags(0, 0)
-        self.move_and_resize(self.active_window, self.dim.x_right, self.dim.y_top, self.dim.w_side, self.dim.h_half)
+    def top_right(self, window):
+        self.set_max_flags(window, 0, 0)
+        self.move_and_resize(window, self.dim.x_right, self.dim.y_top, self.dim.w_side, self.dim.h_half)
 
-    def bottom_right(self):
-        self.set_max_flags(0, 0)
-        self.move_and_resize(self.active_window, self.dim.x_right, self.dim.y_bottom, self.dim.w_side, self.dim.h_half)
+    def bottom_right(self, window):
+        self.set_max_flags(window, 0, 0)
+        self.move_and_resize(window, self.dim.x_right, self.dim.y_bottom, self.dim.w_side, self.dim.h_half)
 
-    def center(self):
+    def center(self, window):
         if self.WIDTH_CHOICE != 0:
-            self.set_max_flags(1, 0)
-            self.move_and_resize(self.active_window, self.dim.x_center, self.dim.y_top, self.dim.w_center, self.dim.h_full)
+            self.set_max_flags(window, 1, 0)
+            self.move_and_resize(window, self.dim.x_center, self.dim.y_top, self.dim.w_center, self.dim.h_full)
 
-    def top_center(self):
+    def top_center(self, window):
         if self.WIDTH_CHOICE != 0:
-            self.set_max_flags(0, 0)
-            self.move_and_resize(self.active_window, self.dim.x_center, self.dim.y_top, self.dim.w_center, self.dim.h_half)
+            self.set_max_flags(window, 0, 0)
+            self.move_and_resize(window, self.dim.x_center, self.dim.y_top, self.dim.w_center, self.dim.h_half)
 
-    def bottom_center(self):
+    def bottom_center(self, window):
         if self.WIDTH_CHOICE != 0:
-            self.set_max_flags(0, 0)
-            self.move_and_resize(self.active_window, self.dim.x_center, self.dim.y_bottom, self.dim.w_center, self.dim.h_half)
+            self.set_max_flags(window, 0, 0)
+            self.move_and_resize(window, self.dim.x_center, self.dim.y_bottom, self.dim.w_center, self.dim.h_half)
 
-    def max(self, v=1, h=1):
-        self.set_max_flags(1, 1)
+    def max(self, window, v=1, h=1):
+        self.set_max_flags(window, 1, 1)
 
-    def restore(self):
-        self.set_max_flags(0, 0)
+    def restore(self, window):
+        self.set_max_flags(window, 0, 0)
 
     def bigger(self):
         self.WIDTH_CHOICE = (self.WIDTH_CHOICE + 1) % len(self.SUPPORTED_WIDTHS)
@@ -245,16 +245,16 @@ class WindowManager:
         self.update_dimensions()
         self.save_config()
 
-    def is_window_maximized_vertically(self):
-        state = self.active_window.get_full_property(self.atom.state, X.AnyPropertyType)        
+    def is_window_maximized_vertically(self, window):
+        state = window.get_full_property(self.atom.state, X.AnyPropertyType)        
         # Check if the window is maximized vertically
         if state:
             return self.atom.v_max in state.value
         return False
 
-    def get_gtk_frame_extents(self):        
+    def get_gtk_frame_extents(self, window):        
         # Try to get the _GTK_FRAME_EXTENTS property of the active window
-        frame_extents = self.active_window.get_full_property(self.atom.gtk_extents, X.AnyPropertyType)
+        frame_extents = window.get_full_property(self.atom.gtk_extents, X.AnyPropertyType)
         if frame_extents:
             # The property value is an array of 4 integers: [left, right, top, bottom]
             extents = frame_extents.value
@@ -267,88 +267,8 @@ class WindowManager:
         else:
             return None
 
-    # def get_active_window_dimensions(self):        
-    #     # Get the window geometry
-    #     geom = self.active_window.get_geometry()
-        
-    #     # Dimensions: width and height
-    #     width = geom.width
-    #     height = geom.height
-        
-    #     # Position: x and y
-    #     x = geom.x
-    #     y = geom.y
-        
-    #     return x, y, width, height
-
-    # def get_active_window_with_decorations(self):
-    #     # Get the window geometry
-    #     geom = self.active_window.get_geometry()
-    #     width = geom.width
-    #     height = geom.height
-
-    #     # Try to get frame extents (decorations)
-    #     frame_extents = window.get_full_property(d.intern_atom('_NET_FRAME_EXTENTS'), X.AnyPropertyType)
-    #     if frame_extents:
-    #         left, right, top, bottom = frame_extents.value
-    #         # Adjust dimensions to include decorations
-    #         width += left + right
-    #         height += top + bottom
-
-    #     # Position: x and y might be offset by the window manager; consider this for positioning
-    #     x = geom.x
-    #     y = geom.y
-
-    #     return x, y, width, height
-
-    # def print_decoration_measurements(self):
-    #     frame_extents = self.active_window.get_full_property(self.d.intern_atom('_NET_FRAME_EXTENTS'), X.AnyPropertyType)
-    #     if frame_extents:
-    #         left, right, top, bottom = frame_extents.value
-    #         horizontal_decoration = left + right
-    #         vertical_decoration = top + bottom
-    #         print(f"Horizontal decoration (total): {horizontal_decoration}px")
-    #         print(f"Vertical decoration (total): {vertical_decoration}px")
-    #     else:
-    #         print("Unable to retrieve decoration sizes. The window manager may not support _NET_FRAME_EXTENTS.")
-
-    # def dump_window_info(self):
-    #     # Get list of all atom names for reference
-    #     atom_names = {atom: self.d.get_atom_name(atom) for atom in range(1, 1000)}  # Adjust range as necessary
-
-    #     # Fetch all properties of the active window
-    #     properties = self.active_window.list_properties()
-        
-    #     print("Active Window Properties:")
-    #     for prop in properties:
-    #         prop_name = atom_names.get(prop, f"Unknown Atom {prop}")
-            
-    #         # Skip _NET_WM_ICON to avoid clutter
-    #         if prop_name == '_NET_WM_ICON':
-    #             continue
-            
-    #         prop_value = self.active_window.get_full_property(prop, X.AnyPropertyType)
-    #         if prop_value:
-    #             value = prop_value.value
-    #             try:
-    #                 # Attempt to decode if it's a string/byte array
-    #                 decoded_value = value.decode('utf-8', errors='ignore')
-    #                 print(f"{prop_name} ({prop}): {decoded_value}")
-    #             except AttributeError:
-    #                 # Print as is if it's not a byte array (e.g., integers)
-    #                 print(f"{prop_name} ({prop}): {value}")
-    #         else:
-    #             print(f"{prop_name} ({prop}): No Value")
-
     def test(self):
         pass
-        # self.dump_window_info()
-        # # Example usage
-        # x, y, width, height = self.get_active_window_dimensions()
-        # print(f"Active window     x={x}, y={y}, width={width}, height={height}")
-        # x, y, width, height = self.get_active_window_with_decorations()
-        # print(f"Active window (d) x={x}, y={y}, width={width}, height={height}")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Window management script")
@@ -385,7 +305,7 @@ def main():
 
     # Call the corresponding function based on the action argument
     if args.action in actions:
-        actions[args.action]()
+        actions[args.action](wm.active_window)
         wm.flush()
     else:
         print(f"Invalid action: {args.action}")
