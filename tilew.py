@@ -32,11 +32,14 @@ class Config:
         self.active_desktop = active_desktop
         self.config_file = config_file
         self.supported_ratios = [
-            0,       # only 2 columns
-            (3/9),   # 3 even columns
-            (4/10),  # 40% center
-            (5/10),  # 50% center
-            (6/10),  # 60% center
+            0,        # only 2 columns
+            (3/9),    # 3 even columns
+            (40/100), # 40% center
+            (45/100), # 45% center
+            (50/100), # 50% center
+            (55/100), # 55% center
+            (60/100), # 60% center
+            (65/100), # 65% center
         ]
         self.reload()
 
