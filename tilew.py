@@ -3,6 +3,7 @@ import json
 from Xlib import X, display, Xatom, protocol
 import shelve
 import sys
+import traceback
 
 class ScreenDimensions:
     def __init__(self, screen_height, screen_width, center_width, measured_height=None, measured_decorations=0, panel_height=64):
@@ -431,7 +432,8 @@ def main():
         else:
             print(f"Invalid action: {args.action}")
     except:
-        print("Unexpected error:", sys.exc_info())
+        print("Unexpected error:", sys.exc_info()[0])
+        traceback.print_exc()
     finally:
         wm.d.ungrab_server()
         wm.d.sync()
