@@ -2,9 +2,10 @@ import argparse
 import json
 from Xlib import X, display, Xatom, protocol
 import shelve
+import sys
 
 class ScreenDimensions:
-    def __init__(self, screen_height, screen_width, center_width, measured_height=None, measured_decorations=0):
+    def __init__(self, screen_height, screen_width, center_width, measured_height=None, measured_decorations=0, panel_height=64):
         if measured_height is not None:
             screen_height = measured_height
 
@@ -15,7 +16,7 @@ class ScreenDimensions:
         self.x_right = screen_width - side_width
         self.x_center = (screen_width - center_width) // 2
         self.y_top = 0
-        self.y_bottom = screen_height
+        self.y_bottom = screen_height - row_height + panel_height
         self.w_side = side_width
         self.w_center = center_width
         self.h_half = row_height
@@ -49,7 +50,6 @@ class Config:
             self.ratio_idx = config.get(f'ratio_idx_{self.active_desktop}', 2)
             self.ratio = self.supported_ratios[self.ratio_idx]
             self.center_width = int(self.screen_width * self.ratio)
-            # self.WIDTH_CHOICE = config.get(str(self.active_desktop), 1)  # default to 3 equal columns
 
     def next_ratio(self, step=1):
         self.ratio_idx = (self.ratio_idx + len(self.supported_ratios) + step) % len(self.supported_ratios)
@@ -62,25 +62,31 @@ class AtomCache:
         self._cache = {}
 
     def __getattr__(self, name):
-        # Custom atom names mapped to actual X11 atom names
+        # custom atom names mapped to actual X11 atom names
         atom_mapping = {
             'state': '_NET_WM_STATE',
             'v_max': '_NET_WM_STATE_MAXIMIZED_VERT',
             'h_max': '_NET_WM_STATE_MAXIMIZED_HORZ',
-            'desktop': '_NET_CURRENT_DESKTOP',
+            'current_desktop': '_NET_CURRENT_DESKTOP',
+            'wm_desktop': '_NET_WM_DESKTOP',
+            'workarea': '_NET_WORKAREA',
             'window': '_NET_ACTIVE_WINDOW',
             'extents': '_NET_FRAME_EXTENTS',
             'gtk_extents': '_GTK_FRAME_EXTENTS',
+            'client_list': '_NET_CLIENT_LIST',  # windows
+            'client_list_stacking': '_NET_CLIENT_LIST_STACKING',  # back-to-front ordered windows
+            'name': '_NET_WM_NAME',
+            'name_fallback': 'WM_NAME',
         }
 
         if name in atom_mapping:
             atom_name = atom_mapping[name]
-            # Fetch and cache the atom if it's not already cached
+            # fetch and cache the atom if it's not already cached
             if atom_name not in self._cache:
                 self._cache[atom_name] = self.d.intern_atom(atom_name)
             return self._cache[atom_name]
         else:
-            # Fallback if the name is not in our custom mapping
+            # fallback if the name is not in our custom mapping
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
 class WindowManager:
@@ -95,7 +101,32 @@ class WindowManager:
         self.active_window = self.get_active_window()
         self.config = Config(self.screenWidth, self.active_desktop)
         self.maybe_measure(self.active_window)
-        self.dim = ScreenDimensions(self.screenHeight, self.screenWidth, self.config.center_width, self.config.measured_height, self.config.measured_decorations)
+        self.panel_height = self.get_panel_height_from_workarea()
+        self.dim = self.create_dim()
+        self.win_actions = {
+            'left': self.left,
+            'center': self.center,
+            'right': self.right,
+            'top-left': self.top_left,
+            'bottom-left': self.bottom_left,
+            'top-right': self.top_right,
+            'bottom-right': self.bottom_right,
+            'top-center': self.top_center,
+            'bottom-center': self.bottom_center,
+            'max': self.max,
+            'restore': self.restore,
+            # 'cycle': self.cycle,
+            # 'install': self.install,
+            'test': self.test,
+        }
+        self.desk_actions = {
+            'bigger': self.bigger,
+            'smaller': self.smaller,
+        }
+
+    # TODO this is a bad hack to compensate for not being able to cleanly update config -> dim
+    def create_dim(self):
+        return ScreenDimensions(self.screenHeight, self.screenWidth, self.config.center_width, self.config.measured_height, self.config.measured_decorations, self.panel_height)
 
     def maybe_measure(self, window):
         if self.is_window_maximized_vertically(window):
@@ -111,20 +142,20 @@ class WindowManager:
         geom = window.get_geometry()
         undecorated_height = geom.height
 
-        # Try to get frame extents (decorations)
+        # try to get frame extents (decorations, drop shadows, etc)
         frame_extents = window.get_full_property(self.atom.extents, X.AnyPropertyType)
         if frame_extents:
             _, _, top, bottom = frame_extents.value
-            # The decoration height is the sum of the top and bottom parts
+            # sum of the top and bottom decorations
             decoration_height = top + bottom
         else:
-            # If unable to get frame extents, assume no decorations
+            # assume no decorations
             decoration_height = 0
 
         return geom.height, decoration_height
 
     def get_active_desktop(self):
-        property = self.root.get_full_property(self.atom.desktop, X.AnyPropertyType)
+        property = self.root.get_full_property(self.atom.current_desktop, X.AnyPropertyType)
         return property.value[0] if property else 0
 
     def get_active_window(self):
@@ -145,7 +176,9 @@ class WindowManager:
             width += delta_w
             height += delta_h
             x -= delta_w // 2
-            y -= delta_h // 2
+            # TODO this isn't needed after adding panel size compensation to dim.y_bottom
+            #  but why? do we have a subtle math bug?
+            # y -= delta_h // 2
 
         # setup mask of changed values - this should be the same for all invocations
         #  unless we add features like "always on top", or stop specifying certain dimensions in the caller
@@ -166,7 +199,6 @@ class WindowManager:
 
         # Configure the window based on the specified mask and values
         window.configure(value_mask=value_mask, x=x, y=y, width=width, height=height)
-        self.d.flush()
 
     def set_max_flags(self, window, v=1, h=1):
         data = [v, self.atom.v_max, 0, 0, 0]
@@ -229,14 +261,32 @@ class WindowManager:
         self.set_max_flags(window, 0, 0)
 
     def bigger(self):
-        self.config.next_ratio()
+        self.test(None)
+        self.resize_all_windows(1)
 
     def smaller(self):
-        self.config.next_ratio(-1)
+        self.test(None)
+        self.resize_all_windows(-1)
+
+    def resize_all_windows(self, step):
+        # get window zones before we change the dimensions that will be used to detect them
+        window_zones = [(win, self.determine_tile_zone(win)) for win in self.list_windows()]
+        # update zone sizes
+        self.config.next_ratio(step)
+        self.dim = self.create_dim() # TODO refactor me
+
+        # no center zone in ratio 0, so move it left
+        #  TODO refactor this so we don't check over and over
+        for win, zone in window_zones:
+            if self.config.ratio_idx == 0:
+                zone = zone.replace("center", "left")
+            if "unknown" not in zone:
+                self.win_actions[zone](win)
+
+        self.flush()
 
     def is_window_maximized_vertically(self, window):
         state = window.get_full_property(self.atom.state, X.AnyPropertyType)        
-        # Check if the window is maximized vertically
         if state:
             return self.atom.v_max in state.value
         return False
@@ -256,8 +306,108 @@ class WindowManager:
         else:
             return None
 
-    def test(self):
-        pass
+    def list_windows(self, all_desktops=False):
+        window_list = []
+        # try to get a sorted window list
+        window_ids = self.root.get_full_property(self.atom.client_list_stacking, X.AnyPropertyType)        
+        if window_ids is None:
+            # fallback to unsorted list
+            window_ids = self.root.get_full_property(self.atom.client_list, X.AnyPropertyType)
+
+        if window_ids:
+            window_list = [self.d.create_resource_object('window', wid) for wid in window_ids.value]
+            # filter windows by the current desktop
+            if not all_desktops:
+                window_list = [w for w in window_list if self.get_window_desktop(w) == self.active_desktop]
+        return window_list
+
+    def get_window_desktop(self, window):
+        desktop = window.get_full_property(self.atom.wm_desktop, X.AnyPropertyType)
+        if desktop:
+            return desktop.value[0]
+        return None
+
+    def get_panel_height_from_workarea(self):
+        d = display.Display()
+        root = d.screen().root
+        net_workarea = d.intern_atom('_NET_WORKAREA')
+        workarea = root.get_full_property(net_workarea, X.AnyPropertyType)
+
+        if workarea is not None:
+            # Assuming the panel is at the top or bottom and not on the sides,
+            # and that there's only one panel, or they have the same total height.
+            workarea_height = workarea.value[3]
+            screen_height = d.screen().height_in_pixels
+
+            # Calculate panel height
+            panel_height = (screen_height - workarea_height)
+            return panel_height
+        else:
+            return None
+
+    def get_window_position(self, window):
+        root_window = self.d.screen().root
+        translated_coords = window.translate_coords(root_window, 0, 0)
+        if translated_coords:
+            x, y = translated_coords.x, translated_coords.y
+            return abs(x), abs(y)
+        else:
+            return None, None
+
+    def determine_tile_zone(self, window, d_x=128, d_y=128, d_w=128, d_h=128):
+        x, y = self.get_window_position(window)
+        geom = window.get_geometry()
+        w, h = geom.width, geom.height
+
+        # Helper function to check if a value is within a deviation range
+        def within(value, target, deviation):
+            return target - deviation <= value <= target + deviation
+
+        horizontal_pos = 'unknown'
+        vertical_pos = 'unknown'
+        
+        # Determine vertical position, and whether the height implied we're tiled
+        if self.is_window_maximized_vertically(window):
+            vertical_pos = 'full'
+        elif within(h, self.dim.h_half, d_h):
+            if within(y, self.dim.y_top, d_y):
+                vertical_pos = 'top'
+            elif within(y, self.dim.y_bottom, d_y):
+                vertical_pos = 'bottom'
+
+        # Determine horizontal position, and whether the width implies we're tiled
+        if within(w, self.dim.w_side, d_w):
+            if within(x, self.dim.x_left, d_x):
+                horizontal_pos = 'left'
+            elif within(x, self.dim.x_right, d_x):
+                horizontal_pos = 'right'
+            elif within(x, self.dim.x_center, d_x):
+                horizontal_pos = 'center'
+        elif within(w, self.dim.w_center, d_w) and within(x, self.dim.x_center, d_x):
+            horizontal_pos = 'center'
+
+        # TODO this replace() is lazy
+        return f"{vertical_pos}-{horizontal_pos}".replace("full-", "")
+
+    def get_window_title(self, window):
+        name = window.get_full_property(self.atom.name, 0)
+        if not name:
+            name = window.get_full_property(self.atom.name_fallback, 0)
+        if not name:
+            name = "Unknown"
+        return name.value
+
+    def print_window_positions(self):
+        for window in self.list_windows():
+            title = self.get_window_title(window)
+            zone = self.determine_tile_zone(window)
+            x, y = self.get_window_position(window)
+            geom = window.get_geometry()
+            w, h = geom.width, geom.height
+            print(f"title='{title.decode('utf-8')}' zone={zone} pos=({x},{y}) size={w}x{h}")
+
+    def test(self, window):
+        self.print_window_positions()
 
 def main():
     parser = argparse.ArgumentParser(description="Window management script")
@@ -271,38 +421,22 @@ def main():
 
     args = parser.parse_args()
 
-    # Map action names to functions
     wm = WindowManager()
-    win_actions = {
-        'left': wm.left,
-        'center': wm.center,
-        'right': wm.right,
-        'top-left': wm.top_left,
-        'bottom-left': wm.bottom_left,
-        'top-right': wm.top_right,
-        'bottom-right': wm.bottom_right,
-        'top-center': wm.top_center,
-        'bottom-center': wm.bottom_center,
-        'max': wm.max,
-        'restore': wm.restore,
-        # 'cycle': action_cycle,
-        # 'install': action_install,
-        'test': wm.test,
-    }
-
-    desk_actions = {
-        'bigger': wm.bigger,
-        'smaller': wm.smaller,
-    }
-
-    # Call the corresponding function based on the action argument
-    if args.action in win_actions:
-        win_actions[args.action](wm.active_window)
-        wm.flush()
-    elif args.action in desk_actions:
-        desk_actions[args.action]()
-    else:
-        print(f"Invalid action: {args.action}")
+    try:
+        wm.d.grab_server()
+        # Call the corresponding function based on the action argument
+        if args.action in wm.win_actions:
+            wm.win_actions[args.action](wm.active_window)
+            wm.flush()
+        elif args.action in wm.desk_actions:
+            wm.desk_actions[args.action]()
+        else:
+            print(f"Invalid action: {args.action}")
+    except:
+        print("Unexpected error:", sys.exc_info())
+    finally:
+        wm.d.ungrab_server()
+        wm.d.sync()
 
 if __name__ == "__main__":
     main()
