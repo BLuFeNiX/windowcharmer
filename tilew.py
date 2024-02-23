@@ -261,11 +261,9 @@ class WindowManager:
         self.set_max_flags(window, 0, 0)
 
     def bigger(self):
-        self.test(None)
         self.resize_all_windows(1)
 
     def smaller(self):
-        self.test(None)
         self.resize_all_windows(-1)
 
     def resize_all_windows(self, step):
