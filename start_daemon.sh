@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-set -xeEuo pipefail
+set -eEuo pipefail
 
 VENV_DIR=".venv"
 
