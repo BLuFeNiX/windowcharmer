@@ -5,6 +5,8 @@ import shelve
 import sys
 import traceback
 
+from .key_monitor import KeyMonitor
+
 class ScreenDimensions:
     def __init__(self, screen_height, screen_width, center_width, measured_height=None, measured_decorations=0, panel_height=64):
         if measured_height is not None:
@@ -411,35 +413,85 @@ class WindowManager:
     def test(self, window):
         self.print_window_positions()
 
-def main():
-    parser = argparse.ArgumentParser(description="Window management script")
-
-    # Define a single argument for the action
-    parser.add_argument("action", help="Action to perform", choices=[
-        'left', 'center', 'right', 'top-left', 'bottom-left',
-        'top-right', 'bottom-right', 'top-center', 'bottom-center',
-        'max', 'restore', 'cycle', 'install', 'bigger', 'smaller', 'test'
-    ])
-
-    args = parser.parse_args()
-
-    wm = WindowManager()
+def do_action(action):
+    # we must instantiate this here because xlib cares about what thread we're on
+    global wm
+    if not 'wm' in globals():
+        wm = WindowManager()
     try:
         wm.d.grab_server()
         # Call the corresponding function based on the action argument
-        if args.action in wm.win_actions:
-            wm.win_actions[args.action](wm.active_window)
+        if action in wm.win_actions:
+            wm.win_actions[action](wm.get_active_window())
             wm.flush()
-        elif args.action in wm.desk_actions:
-            wm.desk_actions[args.action]()
+        elif action in wm.desk_actions:
+            wm.desk_actions[action]()
         else:
-            print(f"Invalid action: {args.action}")
+            print(f"Invalid action: {action}")
     except:
         print("Unexpected error:", sys.exc_info()[0])
         traceback.print_exc()
     finally:
         wm.d.ungrab_server()
         wm.d.sync()
+
+def daemonize():
+    key_combinations = {
+        ('Super_L', 'Up'):          lambda: do_action("max"),
+        ('Super_L', 'Down'):        lambda: do_action("center"),
+        ('Super_L', 'Left'):        lambda: do_action("left"),
+        ('Super_L', 'Right'):       lambda: do_action("right"),
+        ('Super_L', 'Space'):       lambda: do_action("restore"),
+
+        ('Super_L', 'KP_Home'):     lambda: do_action("top-left"),      # Numpad 7
+        ('Super_L', 'KP_Up'):       lambda: do_action("top-center"),    # Numpad 8
+        ('Super_L', 'KP_Page_Up'):  lambda: do_action("top-right"),     # Numpad 9
+        ('Super_L', 'KP_Left'):     lambda: do_action("left"),          # Numpad 4
+        ('Super_L', 'KP_Begin'):    lambda: do_action("center"),        # Numpad 5
+        ('Super_L', 'KP_Right'):    lambda: do_action("right"),         # Numpad 6
+        ('Super_L', 'KP_End'):      lambda: do_action("bottom-left"),   # Numpad 1
+        ('Super_L', 'KP_Down'):     lambda: do_action("bottom-center"), # Numpad 2
+        ('Super_L', 'KP_Page_Down'):lambda: do_action("bottom-right"),  # Numpad 3
+        ('Super_L', 'KP_Insert'):   lambda: do_action("restore"),       # Numpad 0
+
+        ('Super_L', 'KP_Prior'):    lambda: do_action("top-right"),     # Numpad 9 (alternate keyboard layout)
+        ('Super_L', 'KP_Next'):     lambda: do_action("bottom-right"),  # Numpad 3 (alternate keyboard layout)
+
+        ('Super_L', 'KP_Add'):      lambda: do_action("bigger"),
+        ('Super_L', 'KP_Subtract'): lambda: do_action("smaller"),
+    }
+
+
+    d = display.Display()
+    monitor = KeyMonitor(d, d, key_combinations)
+    monitor.start()
+
+def main():
+    parser = argparse.ArgumentParser(description="windowcharmer - a window tiler")
+
+    # Create a mutually exclusive group
+    group = parser.add_mutually_exclusive_group(required=True)
+
+    # Add the positional argument "action" to the mutually exclusive group
+    group.add_argument("action", nargs='?', help="Action to perform", choices=[
+        'left', 'center', 'right', 'top-left', 'bottom-left',
+        'top-right', 'bottom-right', 'top-center', 'bottom-center',
+        'max', 'restore', 'cycle', 'install', 'bigger', 'smaller', 'test'
+    ])
+
+    # Add the "--daemonize" option to the mutually exclusive group
+    group.add_argument("-d", "--daemonize", action="store_true", help="Run as a daemon")
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    # Example usage
+    if args.daemonize:
+        print("Running as a daemon")
+        daemonize()
+    else:
+        print(f"Performing action: {args.action}")
+        do_action(args.action)
 
 if __name__ == "__main__":
     main()
