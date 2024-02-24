@@ -103,12 +103,6 @@ class WindowManager:
         self.root = screen.root
         self.screenWidth = screen.width_in_pixels
         self.screenHeight = screen.height_in_pixels
-        self.active_desktop = self.get_active_desktop()
-        self.active_window = self.get_active_window()
-        self.config = Config(self.screenWidth, self.active_desktop)
-        self.maybe_measure(self.active_window)
-        self.panel_height = self.get_panel_height_from_workarea()
-        self.dim = self.create_dim()
         self.win_actions = {
             'left': self.left,
             'center': self.center,
@@ -129,6 +123,15 @@ class WindowManager:
             'bigger': self.bigger,
             'smaller': self.smaller,
         }
+
+    # TODO fix this; need refactor of state
+    def update(self):
+        self.active_desktop = self.get_active_desktop()
+        self.active_window = self.get_active_window()
+        self.config = Config(self.screenWidth, self.active_desktop)
+        self.maybe_measure(self.active_window)
+        self.panel_height = self.get_panel_height_from_workarea()
+        self.dim = self.create_dim()
 
     # TODO this is a bad hack to compensate for not being able to cleanly update config -> dim
     def create_dim(self):
@@ -419,6 +422,7 @@ def do_action(action):
     if not 'wm' in globals():
         wm = WindowManager()
     try:
+        wm.update()
         wm.d.grab_server()
         # Call the corresponding function based on the action argument
         if action in wm.win_actions:
