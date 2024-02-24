@@ -437,11 +437,11 @@ def do_action(action):
 
 def daemonize():
     key_combinations = {
-        ('Super_L', 'Up'):          lambda: do_action("max"),
-        ('Super_L', 'Down'):        lambda: do_action("center"),
-        ('Super_L', 'Left'):        lambda: do_action("left"),
-        ('Super_L', 'Right'):       lambda: do_action("right"),
-        ('Super_L', 'Space'):       lambda: do_action("restore"),
+        ('Super_L', 'Up'):          lambda: do_action("max"),           # Up
+        ('Super_L', 'Down'):        lambda: do_action("center"),        # Down
+        ('Super_L', 'Left'):        lambda: do_action("left"),          # Left
+        ('Super_L', 'Right'):       lambda: do_action("right"),         # Right
+        ('Super_L', 'Space'):       lambda: do_action("restore"),       # Spacebar
 
         ('Super_L', 'KP_Home'):     lambda: do_action("top-left"),      # Numpad 7
         ('Super_L', 'KP_Up'):       lambda: do_action("top-center"),    # Numpad 8
@@ -457,8 +457,8 @@ def daemonize():
         ('Super_L', 'KP_Prior'):    lambda: do_action("top-right"),     # Numpad 9 (alternate keyboard layout)
         ('Super_L', 'KP_Next'):     lambda: do_action("bottom-right"),  # Numpad 3 (alternate keyboard layout)
 
-        ('Super_L', 'KP_Add'):      lambda: do_action("bigger"),
-        ('Super_L', 'KP_Subtract'): lambda: do_action("smaller"),
+        ('Super_L', 'KP_Add'):      lambda: do_action("bigger"),        # Numpad +
+        ('Super_L', 'KP_Subtract'): lambda: do_action("smaller"),       # Numpad -
     }
 
 
