@@ -87,28 +87,30 @@ def do_action(action):
 if __name__ == "__main__":
     dpy = display.Display()
     key_combinations = {
-        'Up':          lambda: do_action("max"),           # Up
-        'Down':        lambda: do_action("center"),        # Down
-        'Left':        lambda: do_action("left"),          # Left
-        'Right':       lambda: do_action("right"),         # Right
-        'Space':       lambda: do_action("restore"),       # Spacebar
+        'Up':           lambda: do_action("max"),           # Up
+        'Down':         lambda: do_action("center"),        # Down
+        'Left':         lambda: do_action("left"),          # Left
+        'Right':        lambda: do_action("right"),         # Right
+        'Space':        lambda: do_action("restore"),       # Spacebar
 
-        'KP_Home':     lambda: do_action("top-left"),      # Numpad 7
-        'KP_Up':       lambda: do_action("top-center"),    # Numpad 8
-        'KP_Page_Up':  lambda: do_action("top-right"),     # Numpad 9
-        'KP_Left':     lambda: do_action("left"),          # Numpad 4
-        'KP_Begin':    lambda: do_action("center"),        # Numpad 5
-        'KP_Right':    lambda: do_action("right"),         # Numpad 6
-        'KP_End':      lambda: do_action("bottom-left"),   # Numpad 1
-        'KP_Down':     lambda: do_action("bottom-center"), # Numpad 2
-        'KP_Page_Down':lambda: do_action("bottom-right"),  # Numpad 3
-        'KP_Insert':   lambda: do_action("restore"),       # Numpad 0
+        'KP_Home':      lambda: do_action("top-left"),      # Numpad 7
+        'KP_Up':        lambda: do_action("top-center"),    # Numpad 8
+        'KP_Page_Up':   lambda: do_action("top-right"),     # Numpad 9
+        'KP_Left':      lambda: do_action("left"),          # Numpad 4
+        'KP_Begin':     lambda: do_action("center"),        # Numpad 5
+        'KP_Right':     lambda: do_action("right"),         # Numpad 6
+        'KP_End':       lambda: do_action("bottom-left"),   # Numpad 1
+        'KP_Down':      lambda: do_action("bottom-center"), # Numpad 2
+        'KP_Page_Down': lambda: do_action("bottom-right"),  # Numpad 3
+        'KP_Insert':    lambda: do_action("restore"),       # Numpad 0
 
-        'KP_Prior':    lambda: do_action("top-right"),     # Numpad 9 (alternate keyboard layout)
-        'KP_Next':     lambda: do_action("bottom-right"),  # Numpad 3 (alternate keyboard layout)
+        'KP_Prior':     lambda: do_action("top-right"),     # Numpad 9 (alternate keyboard layout)
+        'KP_Next':      lambda: do_action("bottom-right"),  # Numpad 3 (alternate keyboard layout)
 
-        'KP_Add':      lambda: do_action("bigger"),        # Numpad +
-        'KP_Subtract': lambda: do_action("smaller"),       # Numpad -
+        'KP_Add':       lambda: do_action("bigger"),        # Numpad +
+        'KP_Subtract':  lambda: do_action("smaller"),       # Numpad -
+
+        'Escape':       lambda: sys.exit(),                 # Escape
     }
 
     monitor = KeyMonitor(dpy, key_combinations)
