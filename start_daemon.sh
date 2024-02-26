@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -eEuo pipefail
 
 VENV_DIR=".venv"
