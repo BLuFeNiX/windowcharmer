@@ -15,7 +15,7 @@ fi
 source "$VENV_DIR/bin/activate"
 
 # install windowcharmer
-if ! command windowcharmer; then
+if ! command -v windowcharmer; then
     pip install .
 fi
 
