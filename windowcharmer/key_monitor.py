@@ -91,7 +91,7 @@ if __name__ == "__main__":
         'Down':         lambda: do_action("center"),        # Down
         'Left':         lambda: do_action("left"),          # Left
         'Right':        lambda: do_action("right"),         # Right
-        'Space':        lambda: do_action("restore"),       # Spacebar
+        'space':        lambda: do_action("restore"),       # spacebar
 
         'KP_Home':      lambda: do_action("top-left"),      # Numpad 7
         'KP_Up':        lambda: do_action("top-center"),    # Numpad 8
