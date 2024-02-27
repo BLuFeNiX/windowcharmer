@@ -74,11 +74,11 @@ class KeyMonitor:
                 self.key_pressed_while_super_down = False
 
             elif self.super_down and event.type == X.KeyPress:
+                self.key_pressed_while_super_down = True
                 keycode = event.detail
                 for key, action in self.key_combinations.items():
                     if keycode == get_keycode(self.display, key):
                         action()
-                        self.key_pressed_while_super_down = True
                         break
 
 def do_action(action):
