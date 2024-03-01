@@ -28,7 +28,7 @@ You will likely want to run this automatically on login, which is an exercise le
 
 #### Default Keybindings
 
-The activation key is Super_L (the left "Windows" key), and the bindings can currently only be changed from source code:
+**The activation key is Super_L** (the left "Windows" key), and the bindings can currently only be changed from source code:
 ```
     key_combinations = {
         'Up':           lambda: do_action("max"),           # Up
