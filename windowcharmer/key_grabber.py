@@ -27,6 +27,8 @@ class KeyGrabber:
         self.dpy = dpy
         # we accept nicely named keys like "Left", so convert them to keycode integers
         self.keycode_action_map = {get_keycode(dpy, key): value for key, value in key_combinations.items()}
+        if 0 in self.keycode_action_map:
+            raise ValueError("refusing to bind to keycode 0 (all keys)!")
         self.modifier = modifier
 
     def start(self):
@@ -76,7 +78,7 @@ if __name__ == "__main__":
         'KP_Add':       lambda: do_action("bigger"),        # Numpad +
         'KP_Subtract':  lambda: do_action("smaller"),       # Numpad -
 
-        'Escape':       lambda: sys.exit(),                 # Escape
+        'BackSpace':    lambda: sys.exit(),                 # backspace
     }
 
     dpy = display.Display()

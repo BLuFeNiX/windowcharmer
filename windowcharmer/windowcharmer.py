@@ -496,7 +496,7 @@ def daemonize():
         'KP_Add':       lambda: do_action("bigger"),        # Numpad +
         'KP_Subtract':  lambda: do_action("smaller"),       # Numpad -
 
-        'Escape':       lambda: sys.exit(),                 # Escape
+        'BackSpace':    lambda: sys.exit(),                 # backspace
     }
 
     daemon_dpy = display.Display()
