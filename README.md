@@ -24,7 +24,7 @@ windowcharmer -d
 
 You will likely want to run this automatically on login, which is an exercise left for the user, but [start_daemon.sh](start_daemon.sh) will work for most users by simply adding that file to your startup programs list.
 
-**Also, be sure to disable exsiting conflicting keybindings, which likely already control similar functions in your DE.**
+**Note: Removing conflicting keybindings in your desktop environment (such as window snapping controls) should NOT be necessary. They will be overridden while the daemon is running.**
 
 #### Default Keybindings
 
