@@ -526,10 +526,15 @@ def daemonize():
         super_pressed = False
         global key_pressed_while_super_down
         key_pressed_while_super_down = False
+        global kill_monitor
+        kill_monitor = False
 
         def monitor_callback(dpy, event):
             global super_pressed
             global key_pressed_while_super_down
+            global kill_monitor
+            if kill_monitor:
+                raise SystemExit
             if event.type == X.KeyPress or event.type == X.KeyRelease:
                 if event.detail == super_l_keycode:
                     if event.type == X.KeyPress:
@@ -562,11 +567,15 @@ def daemonize():
         print("Unexpected error:", sys.exc_info()[0])
         traceback.print_exc()
     finally:
+        kill_monitor = True
+        t1.join()
         # Restore the original mapping for Super_L
         print("Restoring Super_L mapping back to original...")
-        master_dpy.change_keyboard_mapping(super_l_keycode, original_mapping)
-        master_dpy.change_keyboard_mapping(hyper_l_keycode, original_mapping2)
-        master_dpy.flush()
+        # new dpy here, otherwise we hang 
+        dpy = display.Display()
+        dpy.change_keyboard_mapping(super_l_keycode, original_mapping)
+        dpy.change_keyboard_mapping(hyper_l_keycode, original_mapping2)
+        dpy.sync()
 
 def main():
     parser = argparse.ArgumentParser(description="windowcharmer - a window tiler")
