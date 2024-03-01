@@ -225,6 +225,11 @@ class WindowManager:
             value_mask |= X.CWHeight  # Window's height
             values.append(height)
 
+        # hack to detect and remove snapping by other window managers,
+        #  though it will do some extra work most of the time, it seems fast/smooth enough
+        if self.is_window_maximized_vertically(window):
+            self.restore(window)
+
         # Configure the window based on the specified mask and values
         window.configure(value_mask=value_mask, x=x, y=y, width=width, height=height)
 
