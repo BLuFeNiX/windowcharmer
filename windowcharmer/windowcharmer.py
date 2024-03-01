@@ -581,7 +581,7 @@ def daemonize():
         dpy.sync()
 
 def main():
-    parser = argparse.ArgumentParser(description="windowcharmer - a window tiler")
+    parser = argparse.ArgumentParser(description="windowcharmer - a window tiler for ultra-wide monitors, which supports 3 columns.")
 
     # Create a mutually exclusive group
     group = parser.add_mutually_exclusive_group(required=True)
