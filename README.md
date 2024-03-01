@@ -9,7 +9,7 @@ git clone https://github.com/BLuFeNiX/windowcharmer
 cd windowcharmer
 python3 -m venv .venv
 source .venv/bin/activate
-pip install .
+pip install -e .
 ```
 
 ## Usage
