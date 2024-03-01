@@ -12,6 +12,7 @@ import time
 
 from .key_monitor import KeyMonitor, get_keycode
 from .key_grabber import KeyGrabber
+from .sleep_detector import WakeFromSleepDetector
 
 lock = threading.Lock()
 
@@ -140,6 +141,7 @@ class WindowManager:
             'bigger': self.bigger,
             'smaller': self.smaller,
         }
+
 
     # TODO fix this; need refactor of state
     def update(self):
@@ -497,44 +499,34 @@ def daemonize():
         'Escape':       lambda: sys.exit(),                 # Escape
     }
 
-    global master_dpy
-    master_dpy = display.Display()
-
-    super_l_keycode = get_keycode(master_dpy, 'Super_L')
+    daemon_dpy = display.Display()
+    super_l_keycode = get_keycode(daemon_dpy, 'Super_L')
     hyper_l_keysym = XK.string_to_keysym('Hyper_L')
-
-
-    hyper_l_keycode = get_keycode(master_dpy, 'Hyper_L')
+    hyper_l_keycode = get_keycode(daemon_dpy, 'Hyper_L')
     super_l_keysym = XK.string_to_keysym('Super_L')
 
     # Get the original mapping for Super_L
-    original_mapping = master_dpy.get_keyboard_mapping(super_l_keycode, 1)
-    original_mapping2 = None
+    super_l_orig = daemon_dpy.get_keyboard_mapping(super_l_keycode, 1)
     try:
-        original_mapping2 = master_dpy.get_keyboard_mapping(hyper_l_keycode, 1)
+        hyper_l_orig = daemon_dpy.get_keyboard_mapping(hyper_l_keycode, 1)
     except:
-        print("no mapping for Hyper_L! this means we can't simulate it; exiting")
+        print("no mapping for Hyper_L! this means we can't simulate it, or keycodes have been misconfigured; exiting")
         sys.exit(1)
 
     try:
         # Remap Super_L to Hyper_L
+        # This allows us to grab Super key combos without messing up the application menu shortcut
         print("Swapping Super_L and Hyper_L...")
-        change_keyboard_mapping(master_dpy, super_l_keycode, hyper_l_keysym)
-        change_keyboard_mapping(master_dpy, hyper_l_keycode, super_l_keysym)
+        change_keyboard_mapping(daemon_dpy, super_l_keycode, hyper_l_keysym)
+        change_keyboard_mapping(daemon_dpy, hyper_l_keycode, super_l_keysym)
 
-        global super_pressed
+
         super_pressed = False
-        global key_pressed_while_super_down
         key_pressed_while_super_down = False
-        global kill_monitor
-        kill_monitor = False
 
+        # monitor hyper press/release, so we can simulate super for the user 
         def monitor_callback(dpy, event):
-            global super_pressed
-            global key_pressed_while_super_down
-            global kill_monitor
-            if kill_monitor:
-                raise SystemExit
+            nonlocal super_pressed, key_pressed_while_super_down
             if event.type == X.KeyPress or event.type == X.KeyRelease:
                 if event.detail == super_l_keycode:
                     if event.type == X.KeyPress:
@@ -545,21 +537,34 @@ def daemonize():
                         print("Super_L key released")
                         if not key_pressed_while_super_down:
                             print("Forwarding super press")
-                            simulate_key_press_release(master_dpy, hyper_l_keycode)
+                            simulate_key_press_release(daemon_dpy, hyper_l_keycode)
                         key_pressed_while_super_down = False
                 elif super_pressed and event.type == X.KeyPress:
                     key_pressed_while_super_down = True
 
         # make sure to use a different dpy with this one, otherwise there is a CPU usage bug
         monitor = KeyMonitor(display.Display(), monitor_callback)
-        # monitor.start()
-
         t1 = Thread(target=monitor.start) 
         t1.daemon = True
         t1.start()
 
-        grabber = KeyGrabber(master_dpy, key_combinations, modifier=X.Mod4Mask)
+
+        # prevent suspend->resume cycles from resetting keycode mappings
+        def wakeup_action():
+            print("Swapping Super_L and Hyper_L...")
+            change_keyboard_mapping(daemon_dpy, super_l_keycode, hyper_l_keysym)
+            change_keyboard_mapping(daemon_dpy, hyper_l_keycode, super_l_keysym)
+
+        detector = WakeFromSleepDetector(callback=wakeup_action)
+        t2 = Thread(target=detector.start)
+        t2.daemon = True
+        t2.start()
+
+
+        # grab actual keybindings
+        grabber = KeyGrabber(daemon_dpy, key_combinations, modifier=X.Mod4Mask)
         grabber.start()
+
 
     except (KeyboardInterrupt, SystemExit):
         pass
@@ -567,14 +572,12 @@ def daemonize():
         print("Unexpected error:", sys.exc_info()[0])
         traceback.print_exc()
     finally:
-        kill_monitor = True
-        t1.join()
         # Restore the original mapping for Super_L
-        print("Restoring Super_L mapping back to original...")
+        print("Restoring Super_L/Hyper_L mapping back to original...")
         # new dpy here, otherwise we hang 
         dpy = display.Display()
-        dpy.change_keyboard_mapping(super_l_keycode, original_mapping)
-        dpy.change_keyboard_mapping(hyper_l_keycode, original_mapping2)
+        dpy.change_keyboard_mapping(super_l_keycode, super_l_orig)
+        dpy.change_keyboard_mapping(hyper_l_keycode, hyper_l_orig)
         dpy.sync()
 
 def main():
