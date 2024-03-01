@@ -1,13 +1,17 @@
 import argparse
 import json
-from Xlib import X, display, Xatom, protocol
+from Xlib import X, XK, display, Xatom, protocol
+from Xlib.ext import xtest
 import shelve
 import sys
 import traceback
 import threading
+from threading import *
 from functools import wraps
+import time
 
-from .key_monitor import KeyMonitor
+from .key_monitor import KeyMonitor, get_keycode
+from .key_grabber import KeyGrabber
 
 lock = threading.Lock()
 
@@ -453,6 +457,17 @@ def do_action(action):
         wm.d.ungrab_server()
         wm.d.sync()
 
+def change_keyboard_mapping(dpy, keycode, new_keysym):
+    """Change the keyboard mapping for a single keycode."""
+    keysyms = [(new_keysym,)]  # Tuple of keysyms for each keycode
+    dpy.change_keyboard_mapping(keycode, keysyms)
+    dpy.flush()
+
+def simulate_key_press_release(dpy, keycode):
+    xtest.fake_input(dpy, X.KeyPress, keycode)
+    xtest.fake_input(dpy, X.KeyRelease, keycode)
+    dpy.flush()
+
 def daemonize():
     # modifier is always Super_L
     key_combinations = {
@@ -482,10 +497,76 @@ def daemonize():
         'Escape':       lambda: sys.exit(),                 # Escape
     }
 
+    global master_dpy
+    master_dpy = display.Display()
 
-    d = display.Display()
-    monitor = KeyMonitor(d, key_combinations)
-    monitor.start()
+    super_l_keycode = get_keycode(master_dpy, 'Super_L')
+    hyper_l_keysym = XK.string_to_keysym('Hyper_L')
+
+
+    hyper_l_keycode = get_keycode(master_dpy, 'Hyper_L')
+    super_l_keysym = XK.string_to_keysym('Super_L')
+
+    # Get the original mapping for Super_L
+    original_mapping = master_dpy.get_keyboard_mapping(super_l_keycode, 1)
+    original_mapping2 = None
+    try:
+        original_mapping2 = master_dpy.get_keyboard_mapping(hyper_l_keycode, 1)
+    except:
+        print("no mapping for Hyper_L! this means we can't simulate it; exiting")
+        sys.exit(1)
+
+    try:
+        # Remap Super_L to Hyper_L
+        print("Swapping Super_L and Hyper_L...")
+        change_keyboard_mapping(master_dpy, super_l_keycode, hyper_l_keysym)
+        change_keyboard_mapping(master_dpy, hyper_l_keycode, super_l_keysym)
+
+        global super_pressed
+        super_pressed = False
+        global key_pressed_while_super_down
+        key_pressed_while_super_down = False
+
+        def monitor_callback(dpy, event):
+            global super_pressed
+            global key_pressed_while_super_down
+            if event.type == X.KeyPress or event.type == X.KeyRelease:
+                if event.detail == super_l_keycode:
+                    if event.type == X.KeyPress:
+                        super_pressed = True
+                        print("Super_L key pressed")                    
+                    elif event.type == X.KeyRelease:
+                        super_pressed = False
+                        print("Super_L key released")
+                        if not key_pressed_while_super_down:
+                            print("Forwarding super press")
+                            simulate_key_press_release(master_dpy, hyper_l_keycode)
+                        key_pressed_while_super_down = False
+                elif super_pressed and event.type == X.KeyPress:
+                    key_pressed_while_super_down = True
+
+        # make sure to use a different dpy with this one, otherwise there is a CPU usage bug
+        monitor = KeyMonitor(display.Display(), monitor_callback)
+        # monitor.start()
+
+        t1 = Thread(target=monitor.start) 
+        t1.daemon = True
+        t1.start()
+
+        grabber = KeyGrabber(master_dpy, key_combinations, modifier=X.Mod4Mask)
+        grabber.start()
+
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        traceback.print_exc()
+    finally:
+        # Restore the original mapping for Super_L
+        print("Restoring Super_L mapping back to original...")
+        master_dpy.change_keyboard_mapping(super_l_keycode, original_mapping)
+        master_dpy.change_keyboard_mapping(hyper_l_keycode, original_mapping2)
+        master_dpy.flush()
 
 def main():
     parser = argparse.ArgumentParser(description="windowcharmer - a window tiler")
