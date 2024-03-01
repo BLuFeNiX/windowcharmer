@@ -5,7 +5,7 @@ WindowCharmer is a three-column window tiler for ultra-wide monitors, designed t
 ## Installation
 
 ```sh
-git clone https://github.com/BLuFeNiX/windowcharmer
+git clone git@github.com:BLuFeNiX/windowcharmer.git
 cd windowcharmer
 python3 -m venv .venv
 source .venv/bin/activate
