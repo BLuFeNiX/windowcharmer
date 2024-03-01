@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 packages = ["windowcharmer"]
 
 [project]
-name = "windwocharmer"
+name = "windowcharmer"
 version = "2024.3.23"
 dependencies = [
   "python-xlib>=0.33"
