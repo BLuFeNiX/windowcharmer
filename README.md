@@ -58,7 +58,7 @@ key_combinations = {
 }
 ```
 
-For example, to tile the window to the left, press `Super` and the `left arrow` key.
+For example, to tile the window to the left, press `Super` and the `left arrow` key. To kill the daemon, press `Super+backspace`.
 
 ### Scripting
 
