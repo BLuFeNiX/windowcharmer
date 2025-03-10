@@ -133,6 +133,7 @@ class WindowManager:
             'bottom-center': self.bottom_center,
             'max': self.max,
             'restore': self.restore,
+            'determine_tile_zone': self.determine_tile_zone,
             # 'cycle': self.cycle,
             # 'install': self.install,
             'test': self.test,
@@ -313,6 +314,8 @@ class WindowManager:
                 zone = zone.replace("center", "left")
             if "unknown" not in zone:
                 self.win_actions[zone](win)
+            else:
+                print(f"UNKNOWN ZONE: {win}")
 
         self.flush()
 
@@ -398,7 +401,7 @@ class WindowManager:
         vertical_pos = 'unknown'
         
         # Determine vertical position, and whether the height implied we're tiled
-        if self.is_window_maximized_vertically(window):
+        if self.is_window_maximized_vertically(window) or within(h, self.dim.h_full, d_h):
             vertical_pos = 'full'
         elif within(h, self.dim.h_half, d_h):
             if within(y, self.dim.y_top, d_y):
@@ -418,7 +421,9 @@ class WindowManager:
             horizontal_pos = 'center'
 
         # TODO this replace() is lazy
-        return f"{vertical_pos}-{horizontal_pos}".replace("full-", "")
+        ret = f"{vertical_pos}-{horizontal_pos}".replace("full-", "")
+        print(f"ZONE: {ret}")
+        return ret
 
     def get_window_title(self, window):
         name = window.get_full_property(self.atom.name, 0)
