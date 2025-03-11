@@ -315,7 +315,7 @@ class WindowManager:
             if "unknown" not in zone:
                 self.win_actions[zone](win)
             else:
-                print(f"UNKNOWN ZONE: {win}")
+                print(f"UNKNOWN ZONE: {win} {win.get_wm_name()}")
 
         self.flush()
 
