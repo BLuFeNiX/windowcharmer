@@ -514,6 +514,10 @@ def daemonize():
     hyper_l_keysym = XK.string_to_keysym('Hyper_L')
     hyper_l_keycode = get_keycode(daemon_dpy, 'Hyper_L')
     super_l_keysym = XK.string_to_keysym('Super_L')
+    
+    # keycode for imaginary key to select X.Mod5Mask layer
+    #  TODO we can use `xmodmap -pm`, but how to get this via python?
+    ISO_Level3_Shift_keycode = 92
 
     # Get the original mapping for Super_L
     super_l_orig = daemon_dpy.get_keyboard_mapping(super_l_keycode, 1)
@@ -534,17 +538,29 @@ def daemonize():
         super_pressed = False
         key_pressed_while_super_down = False
 
-        # monitor hyper press/release, so we can simulate super for the user 
+        # monitor hyper press/release, so we can simulate super for the user
+        # we also press ISO_Level3_Shift here, such that the key combo has an additional modifer
+        # ex: <Super><Level3_Shift>+whatever
+        # This should prevent the WM, or other Xorg clients, from stealing our keybind (as happens with just Super)
         def monitor_callback(dpy, event):
             nonlocal super_pressed, key_pressed_while_super_down
+
+            # ignore ISO_Level3_Shift, so we can detect and forward a lone Super keypress
+            if event.detail == ISO_Level3_Shift_keycode:
+                return
+
             if event.type == X.KeyPress or event.type == X.KeyRelease:
                 if event.detail == super_l_keycode:
                     if event.type == X.KeyPress:
                         super_pressed = True
-                        print("Super_L key pressed")                    
+                        print("Super_L key pressed")
+                        xtest.fake_input(daemon_dpy, X.KeyPress, ISO_Level3_Shift_keycode)
+                        daemon_dpy.flush()
                     elif event.type == X.KeyRelease:
                         super_pressed = False
                         print("Super_L key released")
+                        xtest.fake_input(daemon_dpy, X.KeyRelease, ISO_Level3_Shift_keycode)
+                        daemon_dpy.flush()
                         if not key_pressed_while_super_down:
                             print("Forwarding super press")
                             simulate_key_press_release(daemon_dpy, hyper_l_keycode)
@@ -572,7 +588,7 @@ def daemonize():
 
 
         # grab actual keybindings
-        grabber = KeyGrabber(daemon_dpy, key_combinations, modifier=X.Mod4Mask)
+        grabber = KeyGrabber(daemon_dpy, key_combinations, modifier=X.Mod4Mask|X.Mod5Mask)
         grabber.start()
 
 
