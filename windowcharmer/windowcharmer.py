@@ -9,12 +9,17 @@ import threading
 from threading import *
 from functools import wraps
 import time
+import pyudev
+import subprocess
 
 from .key_monitor import KeyMonitor, get_keycode
 from .key_grabber import KeyGrabber
 from .sleep_detector import WakeFromSleepDetector
 
 lock = threading.Lock()
+# Global timer variable for debouncing schedule_rebind()
+debounce_timer = None
+timer_lock = threading.Lock()
 
 def thread_locked(lock):
     def decorator(func):
@@ -562,11 +567,39 @@ def daemonize():
 
 
         # prevent suspend->resume cycles from resetting keycode mappings
-        detector = WakeFromSleepDetector(callback=rebind_super)
+        detector = WakeFromSleepDetector(callback=rebind_super) # TODO debounce this with schedule_rebind?
         t2 = Thread(target=detector.start)
         t2.daemon = True
         t2.start()
 
+        # udev event monitoring
+        def schedule_rebind():
+            global debounce_timer
+            with timer_lock:
+                # Cancel any previously scheduled rebind
+                if debounce_timer is not None:
+                    debounce_timer.cancel()
+                # Schedule rebind_super after a short delay
+                # new events within this delay window will be debounced
+                debounce_timer = threading.Timer(0.25, rebind_super)
+                debounce_timer.start()
+
+        # monitor udev for device added events,
+        # which cause key mappings to be reset
+        def monitor_input_events():
+            context = pyudev.Context()
+            monitor = pyudev.Monitor.from_netlink(context)
+            monitor.filter_by(subsystem='input')
+            print("Monitoring udev input events...")
+            for device in iter(monitor.poll, None):
+                if device.action == 'add' and device.properties.get('DEVNAME', '').startswith('/dev/input/event'):
+                    print("udev 'add' event detected on", device.device_path)
+                    schedule_rebind()
+
+        # Start the monitor in a daemon thread.
+        t3 = threading.Thread(target=monitor_input_events)
+        t3.daemon = True
+        t3.start()
 
         # grab actual keybindings
         grabber = KeyGrabber(daemon_dpy, key_combinations, modifier=X.Mod4Mask)
