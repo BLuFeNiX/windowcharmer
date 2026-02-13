@@ -20,4 +20,5 @@ if ! command -v windowcharmer; then
 fi
 
 # run daemon
+export PYTHONUNBUFFERED=1
 windowcharmer -d
