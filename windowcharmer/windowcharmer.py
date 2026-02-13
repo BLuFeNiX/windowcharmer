@@ -515,7 +515,7 @@ def daemonize():
     hyper_l_keycode = get_keycode(daemon_dpy, 'Hyper_L')
     super_l_keysym = XK.string_to_keysym('Super_L')
 
-    def wakeup_action():
+    def rebind_super():
         print("Swapping Super_L and Hyper_L...")
         change_keyboard_mapping(daemon_dpy, super_l_keycode, hyper_l_keysym)
         change_keyboard_mapping(daemon_dpy, hyper_l_keycode, super_l_keysym)
@@ -531,10 +531,7 @@ def daemonize():
     try:
         # Remap Super_L to Hyper_L
         # This allows us to grab Super key combos without messing up the application menu shortcut
-        print("Swapping Super_L and Hyper_L...")
-        change_keyboard_mapping(daemon_dpy, super_l_keycode, hyper_l_keysym)
-        change_keyboard_mapping(daemon_dpy, hyper_l_keycode, super_l_keysym)
-
+        rebind_super()
 
         super_pressed = False
         key_pressed_while_super_down = False
@@ -565,7 +562,7 @@ def daemonize():
 
 
         # prevent suspend->resume cycles from resetting keycode mappings
-        detector = WakeFromSleepDetector(callback=wakeup_action)
+        detector = WakeFromSleepDetector(callback=rebind_super)
         t2 = Thread(target=detector.start)
         t2.daemon = True
         t2.start()
