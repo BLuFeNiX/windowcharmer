@@ -515,6 +515,11 @@ def daemonize():
     hyper_l_keycode = get_keycode(daemon_dpy, 'Hyper_L')
     super_l_keysym = XK.string_to_keysym('Super_L')
 
+    def wakeup_action():
+        print("Swapping Super_L and Hyper_L...")
+        change_keyboard_mapping(daemon_dpy, super_l_keycode, hyper_l_keysym)
+        change_keyboard_mapping(daemon_dpy, hyper_l_keycode, super_l_keysym)
+
     # Get the original mapping for Super_L
     super_l_orig = daemon_dpy.get_keyboard_mapping(super_l_keycode, 1)
     try:
@@ -560,11 +565,6 @@ def daemonize():
 
 
         # prevent suspend->resume cycles from resetting keycode mappings
-        def wakeup_action():
-            print("Swapping Super_L and Hyper_L...")
-            change_keyboard_mapping(daemon_dpy, super_l_keycode, hyper_l_keysym)
-            change_keyboard_mapping(daemon_dpy, hyper_l_keycode, super_l_keysym)
-
         detector = WakeFromSleepDetector(callback=wakeup_action)
         t2 = Thread(target=detector.start)
         t2.daemon = True
