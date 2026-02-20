@@ -28,7 +28,7 @@ class KeyMonitor:
                 'ext_requests': (0, 0, 0, 0),
                 'ext_replies': (0, 0, 0, 0),
                 'delivered_events': (0, 0),
-                'device_events': (X.KeyPress, X.KeyRelease),
+                'device_events': (X.KeyPress, X.KeyRelease, X.MappingNotify),
                 'errors': (0, 0),
                 'client_started': False,
                 'client_died': False,
@@ -48,6 +48,10 @@ class KeyMonitor:
             data = reply.data
             while len(data):
                 event, data = rq.EventField(None).parse_binary_value(data, self.dpy.display, None, None)
+                if event.type == X.MappingNotify:
+                    # Update Xlib's internal mapping so keysym_to_keycode works correctly
+                    self.dpy.refresh_keyboard_mapping(event)
+                
                 self.callback(self.dpy, event)
 
         self.dpy.record_enable_context(ctx, inner_callback)

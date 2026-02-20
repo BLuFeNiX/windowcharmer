@@ -6,11 +6,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 class KeyGrabber:
-    def __init__(self, dpy, key_combinations, modifier=0):
+    def __init__(self, dpy, key_combinations, modifier=0, on_mapping_notify=None):
         self.dpy = dpy
         self.key_combinations = key_combinations
         self.modifier = modifier
         self.keycode_map = {}
+        self.on_mapping_notify = on_mapping_notify
 
     def _get_keycode(self, key_name):
         keysym = XK.string_to_keysym(key_name)
@@ -37,6 +38,20 @@ class KeyGrabber:
         for mod in modifiers:
             window.grab_key(keycode, self.modifier | mod, True, X.GrabModeAsync, X.GrabModeAsync)
 
+    def ungrab_keys(self):
+        root = self.dpy.screen().root
+        for keycode in list(self.keycode_map.keys()):
+            self._ungrab_key_ignore_locks(root, keycode)
+        self.keycode_map.clear()
+
+    def _ungrab_key_ignore_locks(self, window, keycode):
+        modifiers = [0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask]
+        for mod in modifiers:
+            try:
+                window.ungrab_key(keycode, self.modifier | mod)
+            except Exception:
+                pass
+
     def start(self):
         self.grab_keys()
         try:
@@ -50,6 +65,19 @@ class KeyGrabber:
                         # or run quickly here. The original code ran actions directly.
                         # Actions are usually quick X requests.
                         callback()
+                elif event.type == X.MappingNotify:
+                    # Update Xlib's internal mapping
+                    self.dpy.refresh_keyboard_mapping(event)
+                    logger.debug(f"MappingNotify received: request={event.request}")
+
+                    if event.request == X.MappingKeyboard:
+                        # Notify external listener (rebind_super) FIRST to fix the mapping
+                        if self.on_mapping_notify:
+                            self.on_mapping_notify()
+                        
+                        # THEN re-grab keys with the (potentially) updated mapping
+                        self.ungrab_keys()
+                        self.grab_keys()
         except Exception as e:
             logger.error(f"KeyGrabber error: {e}")
             logger.debug(traceback.format_exc())

@@ -81,9 +81,17 @@ def daemonize():
         sys.exit(1)
 
     def rebind_super():
-        logger.info("Swapping Super_L and Hyper_L...")
         with daemon_lock:
             try:
+                # Check if swap is needed to prevent loops and redundant calls
+                # We check if the physical Super_L key is already mapped to Hyper_L
+                current_map = daemon_dpy.get_keyboard_mapping(super_l_keycode, 1)
+                if current_map and len(current_map) > 0 and len(current_map[0]) > 0:
+                    if current_map[0][0] == hyper_l_keysym:
+                        logger.debug("Super_L is already mapped to Hyper_L. No action needed.")
+                        return
+
+                logger.info("Swapping Super_L and Hyper_L...")
                 change_keyboard_mapping(daemon_dpy, super_l_keycode, hyper_l_keysym)
                 change_keyboard_mapping(daemon_dpy, hyper_l_keycode, super_l_keysym)
                 daemon_dpy.sync()
@@ -94,7 +102,7 @@ def daemonize():
     # Initial rebind
     rebind_super()
 
-    # State for Super key passthrough
+    # Shared state for Super key passthrough
     super_pressed = False
     key_pressed_while_super_down = False
     
@@ -104,6 +112,14 @@ def daemonize():
         
         # NOTE: 'dpy' here is the connection from KeyMonitor, do not use it for simulation
         
+        # Refresh mapping if needed, otherwise our keycode assumptions might be stale
+        if event.type == X.MappingNotify:
+            # Re-fetch keycodes because they might have changed
+            nonlocal super_l_keycode, hyper_l_keycode
+            super_l_keycode = daemon_dpy.keysym_to_keycode(super_l_keysym)
+            hyper_l_keycode = daemon_dpy.keysym_to_keycode(hyper_l_keysym)
+            return
+
         if event.type == X.KeyPress or event.type == X.KeyRelease:
             if event.detail == super_l_keycode:
                 if event.type == X.KeyPress:
@@ -166,7 +182,12 @@ def daemonize():
     # Start main key grabber loop
     # Needs its own display connection for grabs because it blocks on next_event
     grab_dpy = display.Display()
-    grabber = KeyGrabber(grab_dpy, key_combinations, modifier=X.Mod4Mask)
+    grabber = KeyGrabber(
+        grab_dpy, 
+        key_combinations, 
+        modifier=X.Mod4Mask,
+        on_mapping_notify=rebind_super
+    )
     
     try:
         logger.info("Daemon started. Press Ctrl+C to exit.")
