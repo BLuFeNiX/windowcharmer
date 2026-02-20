@@ -1,6 +1,5 @@
 import threading
 from Xlib import X, display, protocol
-import time
 import traceback
 import logging
 
@@ -11,14 +10,10 @@ logger = logging.getLogger(__name__)
 
 class WindowManager:
     def __init__(self):
-        # We use a separate display connection for the manager actions
-        # to avoid conflicts with the daemon/listener loop if they were shared.
-        # Xlib is not thread-safe by default without locking, 
-        # and sharing Display objects across threads is generally discouraged or requires XInitThreads.
-        # Here we follow the pattern of creating a new display for operations or using a locked one.
-        
-        # However, creating a new Display for every action is slow.
-        # We will maintain one Display instance protected by a Lock.
+        """
+        Initializes the WindowManager with its own X11 display connection.
+        We use a separate connection to avoid threading conflicts with the global key monitor.
+        """
         self._lock = threading.Lock()
         self.d = display.Display()
         self.atom = AtomCache(self.d)
@@ -31,36 +26,31 @@ class WindowManager:
         self.active_desktop = 0
         self.config = None
         self.dim = None
-        self.panel_height = 64 # Default guess
 
     def _update_state(self):
-        """Refreshes state from X server and Config."""
+        """
+        Refreshes the internal representation of the screen layout and active window.
+        Uses _NET_WORKAREA to respect system panels and bars.
+        """
         try:
             self.active_desktop = self.get_active_desktop()
             
-            # Re-read config which might have changed (e.g. ratio)
-            # We assume config is light enough to instantiate often
+            # Re-read config which might have changed (e.g. ratio index)
             self.config = Config(self.screenWidth, self.active_desktop)
             
-            active_window = self.get_active_window()
-            if active_window:
-                 self.maybe_measure(active_window)
-            
-            # Get workarea
+            # Get the desktop workarea [x, y, width, height]
             workarea = get_property_value(self.root, self.atom.workarea)
             if workarea:
-                # workarea is [x, y, w, h]
                 wa_x, wa_y, wa_w, wa_h = workarea[0:4]
             else:
                 wa_x, wa_y, wa_w, wa_h = 0, 0, self.screenWidth, self.screenHeight
 
-            # Update dimensions object used for calculations
+            # Update dimensions used for zone calculations
             self.dim = ScreenDimensions(
                 self.screenWidth, 
                 wa_y,
                 wa_h,
-                self.config.center_width, 
-                self.config.measured_decorations
+                self.config.center_width
             )
         except Exception as e:
             logger.error(f"Error updating state: {e}")
@@ -68,34 +58,25 @@ class WindowManager:
 
     def execute_action(self, action_name):
         """
-        Thread-safe entry point for performing actions.
+        Thread-safe entry point for performing a tiling action.
+        Grabs the X server to ensure atomic window updates.
         """
         with self._lock:
             try:
-                # Sync initially to ensure we are up to date?
-                # self.d.sync()
-                
-                # Grab server to ensure atomic updates for the user action
-                # This prevents windows moving while we calculate
                 self.d.grab_server()
-                
                 self._update_state()
                 
                 win = self.get_active_window()
                 
-                # Actions that don't require an active window
                 if action_name == 'bigger':
                     self.resize_all_windows(1)
                 elif action_name == 'smaller':
                     self.resize_all_windows(-1)
                 elif win:
-                    # Dispatch to specific action method
                     method_name = f"action_{action_name.replace('-', '_')}"
                     method = getattr(self, method_name, None)
                     if method:
                         method(win)
-                    elif action_name == 'test':
-                        logger.info(f"Test action on window {win.id}")
                     else:
                         logger.warning(f"Unknown action: {action_name}")
                 
@@ -157,54 +138,37 @@ class WindowManager:
     # --- Helpers ---
 
     def move_and_resize(self, window, x, y, width, height):
-        # We need to determine how much the Window Manager (WM) or the 
-        # Application (if CSD) is going to add to our requested client size.
-        
+        """
+        Fits a window into a target box (x, y, width, height).
+        Handles GTK Client-Side Decorations (CSD) and standard WM titlebars.
+        """
         net_fe = get_property_value(window, self.atom.extents)
         gtk_fe = self.get_gtk_frame_extents(window)
         
-        # Default: no decorations
         d_l = d_r = d_t = d_b = 0
-        
-        # If both are present, we need to be careful.
-        # Usually, if gtk_fe is present, it contains the shadows.
-        # If net_fe is present, it contains the titlebar.
-        
         if net_fe:
-            d_l += net_fe[0]
-            d_r += net_fe[1]
-            d_t += net_fe[2]
-            d_b += net_fe[3]
+            d_l, d_r, d_t, d_b = net_fe[0], net_fe[1], net_fe[2], net_fe[3]
             
         if gtk_fe:
-            # For GTK windows, the 'x, y' of the window frame 
-            # actually includes the shadows. So to place the 
-            # VISIBLE part at x, y, we must shift by the shadows.
+            # Shift frame origin so visible area starts at (x, y)
             x -= gtk_fe['left']
             y -= gtk_fe['top']
             
-            # The requested size must INCLUDE the shadows 
-            # so the visible area remains the correct size.
+            # Expand requested size to include shadows
             width += (gtk_fe['left'] + gtk_fe['right'])
             height += (gtk_fe['top'] + gtk_fe['bottom'])
 
-        # Now, standard X11 'configure' on a managed window 
-        # usually takes the CLIENT size.
+        # The X11 'configure' call expects the CLIENT area size.
         client_w = width - d_l - d_r
         client_h = height - d_t - d_b
         
-        # If maximized, we must restore first
         if self.is_window_maximized_vertically(window):
             self.action_restore(window)
 
-        # Apply changes
-        value_mask = X.CWX | X.CWY | X.CWWidth | X.CWHeight
         window.configure(
-            value_mask=value_mask, 
-            x=int(x), 
-            y=int(y), 
-            width=int(max(1, client_w)), 
-            height=int(max(1, client_h))
+            value_mask=X.CWX | X.CWY | X.CWWidth | X.CWHeight, 
+            x=int(x), y=int(y), 
+            width=int(max(1, client_w)), height=int(max(1, client_h))
         )
 
     def set_max_flags(self, window, v=1, h=1):
@@ -249,39 +213,8 @@ class WindowManager:
             return self.atom.v_max in state
         return False
 
-    def maybe_measure(self, window):
-        # If we have a maximized window, we can learn about screen/decor dimensions
-        if self.is_window_maximized_vertically(window):
-            # Only measure if we don't have GTK extents, or to confirm height
-            # (Original logic)
-            if not self.get_gtk_frame_extents(window):
-                h, d = self.measure_window(window)
-                if h != self.config.measured_height:
-                    self.config.put('measured_height', h)
-                if d != self.config.measured_decorations:
-                    self.config.put('measured_decorations', d)
-
-    def measure_window(self, window):
-        geom = window.get_geometry()
-        undecorated_height = geom.height
-        
-        frame_extents = get_property_value(window, self.atom.extents)
-        decoration_height = 0
-        if frame_extents:
-            decoration_height = frame_extents[2] + frame_extents[3] # top + bottom
-
-        return geom.height, decoration_height
-
-    def get_panel_height_from_workarea(self):
-        workarea = get_property_value(self.root, self.atom.workarea)
-        if workarea is not None:
-            # workarea is typically [x, y, width, height]
-            # Assumes one panel at top/bottom
-            workarea_height = workarea[3]
-            return self.screenHeight - workarea_height
-        return None
-
     def list_windows(self):
+        """Returns a list of all client windows in stacking order."""
         window_ids = get_property_value(self.root, self.atom.client_list_stacking)
         if window_ids is None:
             window_ids = get_property_value(self.root, self.atom.client_list)
@@ -296,10 +229,15 @@ class WindowManager:
         return windows
 
     def get_window_desktop(self, window):
+        """Returns the desktop index for a given window."""
         desktop = get_property_value(window, self.atom.wm_desktop)
         return desktop[0] if desktop else None
 
     def resize_all_windows(self, step):
+        """
+        Adjusts the ratio for all windows on the current desktop.
+        Triggered by bigger/smaller actions.
+        """
         # Determine zones for all current windows before updating state
         window_zones = []
         for win in self.list_windows():
@@ -321,7 +259,10 @@ class WindowManager:
                 method(win)
 
     def determine_tile_zone(self, window, deviation=128):
-        # Heuristic to guess zone based on current position/size
+        """
+        Heuristically determines which tiling zone a window is currently in
+        based on its position and dimensions.
+        """
         x, y = self.get_window_position(window)
         geom = window.get_geometry()
         w, h = geom.width, geom.height
@@ -337,18 +278,17 @@ class WindowManager:
             elif within(y, self.dim.y_bottom): v_pos = 'bottom'
 
         h_pos = 'unknown'
-        # Check side width
         if within(w, self.dim.w_side):
             if within(x, self.dim.x_left): h_pos = 'left'
             elif within(x, self.dim.x_right): h_pos = 'right'
             elif within(x, self.dim.x_center): h_pos = 'center'
-        # Check center width
         elif within(w, self.dim.w_center) and within(x, self.dim.x_center):
             h_pos = 'center'
 
         return f"{v_pos}-{h_pos}".replace("full-", "")
 
     def get_window_position(self, window):
+        """Returns the (x, y) coordinates of the window relative to the root."""
         coords = window.translate_coords(self.root, 0, 0)
         return (abs(coords.x), abs(coords.y)) if coords else (0, 0)
 
