@@ -5,39 +5,9 @@ import traceback
 import logging
 
 from .config import Config, ScreenDimensions
+from .x11_utils import AtomCache, get_property_value
 
 logger = logging.getLogger(__name__)
-
-# Atom cache class to avoid repeated intern_atom calls
-class AtomCache:
-    def __init__(self, dpy):
-        self.d = dpy
-        self._cache = {}
-
-    def __getattr__(self, name):
-        atom_mapping = {
-            'state': '_NET_WM_STATE',
-            'v_max': '_NET_WM_STATE_MAXIMIZED_VERT',
-            'h_max': '_NET_WM_STATE_MAXIMIZED_HORZ',
-            'current_desktop': '_NET_CURRENT_DESKTOP',
-            'wm_desktop': '_NET_WM_DESKTOP',
-            'workarea': '_NET_WORKAREA',
-            'window': '_NET_ACTIVE_WINDOW',
-            'extents': '_NET_FRAME_EXTENTS',
-            'gtk_extents': '_GTK_FRAME_EXTENTS',
-            'client_list': '_NET_CLIENT_LIST',
-            'client_list_stacking': '_NET_CLIENT_LIST_STACKING',
-            'name': '_NET_WM_NAME',
-            'name_fallback': 'WM_NAME',
-        }
-
-        if name in atom_mapping:
-            atom_name = atom_mapping[name]
-            if atom_name not in self._cache:
-                self._cache[atom_name] = self.d.intern_atom(atom_name)
-            return self._cache[atom_name]
-        else:
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
 class WindowManager:
     def __init__(self):
@@ -226,26 +196,25 @@ class WindowManager:
         self.root.send_event(event, event_mask=mask)
 
     def get_active_window(self):
-        prop = self.root.get_full_property(self.atom.window, X.AnyPropertyType)
-        if prop and len(prop.value) > 0:
-            return self.d.create_resource_object('window', prop.value[0])
+        val = get_property_value(self.root, self.atom.window)
+        if val and len(val) > 0:
+            return self.d.create_resource_object('window', val[0])
         return None
 
     def get_active_desktop(self):
-        prop = self.root.get_full_property(self.atom.current_desktop, X.AnyPropertyType)
-        return prop.value[0] if prop else 0
+        val = get_property_value(self.root, self.atom.current_desktop)
+        return val[0] if val else 0
 
     def get_gtk_frame_extents(self, window):        
-        frame_extents = window.get_full_property(self.atom.gtk_extents, X.AnyPropertyType)
-        if frame_extents:
-            extents = frame_extents.value
+        extents = get_property_value(window, self.atom.gtk_extents)
+        if extents:
             return {'left': extents[0], 'right': extents[1], 'top': extents[2], 'bottom': extents[3]}
         return None
 
     def is_window_maximized_vertically(self, window):
-        state = window.get_full_property(self.atom.state, X.AnyPropertyType)        
+        state = get_property_value(window, self.atom.state)
         if state:
-            return self.atom.v_max in state.value
+            return self.atom.v_max in state
         return False
 
     def maybe_measure(self, window):
@@ -264,30 +233,30 @@ class WindowManager:
         geom = window.get_geometry()
         undecorated_height = geom.height
         
-        frame_extents = window.get_full_property(self.atom.extents, X.AnyPropertyType)
+        frame_extents = get_property_value(window, self.atom.extents)
         decoration_height = 0
         if frame_extents:
-            decoration_height = frame_extents.value[2] + frame_extents.value[3] # top + bottom
+            decoration_height = frame_extents[2] + frame_extents[3] # top + bottom
 
         return geom.height, decoration_height
 
     def get_panel_height_from_workarea(self):
-        workarea = self.root.get_full_property(self.atom.workarea, X.AnyPropertyType)
+        workarea = get_property_value(self.root, self.atom.workarea)
         if workarea is not None:
             # workarea is typically [x, y, width, height]
             # Assumes one panel at top/bottom
-            workarea_height = workarea.value[3]
+            workarea_height = workarea[3]
             return self.screenHeight - workarea_height
         return None
 
     def list_windows(self):
-        window_ids = self.root.get_full_property(self.atom.client_list_stacking, X.AnyPropertyType)        
+        window_ids = get_property_value(self.root, self.atom.client_list_stacking)
         if window_ids is None:
-            window_ids = self.root.get_full_property(self.atom.client_list, X.AnyPropertyType)
+            window_ids = get_property_value(self.root, self.atom.client_list)
         
         windows = []
         if window_ids:
-            for wid in window_ids.value:
+            for wid in window_ids:
                 try:
                     windows.append(self.d.create_resource_object('window', wid))
                 except Exception:
@@ -295,8 +264,8 @@ class WindowManager:
         return windows
 
     def get_window_desktop(self, window):
-        desktop = window.get_full_property(self.atom.wm_desktop, X.AnyPropertyType)
-        return desktop.value[0] if desktop else None
+        desktop = get_property_value(window, self.atom.wm_desktop)
+        return desktop[0] if desktop else None
 
     def resize_all_windows(self, step):
         # Determine zones for all current windows before updating state

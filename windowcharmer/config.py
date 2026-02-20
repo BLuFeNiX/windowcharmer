@@ -36,7 +36,11 @@ class KeyBindings:
 class ScreenDimensions:
     def __init__(self, screen_height, screen_width, center_width, measured_height=None, measured_decorations=0, panel_height=64):
         # Allow override of full height if measured
-        self.h_full = measured_height if measured_height else screen_height
+        if measured_height:
+            self.h_full = measured_height
+        else:
+            # Fallback: assume available height is screen minus panel
+            self.h_full = screen_height - panel_height
         
         # Calculate derived dimensions
         self.side_width = (screen_width - center_width) // 2
