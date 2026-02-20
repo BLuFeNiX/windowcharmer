@@ -6,6 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 class KeyGrabber:
+    # Modifiers to ignore when grabbing keys (NumLock, CapsLock, etc.)
+    # Minimal set: None, Lock, Mod2, Lock|Mod2
+    IGNORED_MODIFIERS = [0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask]
+
     def __init__(self, dpy, key_combinations, modifier=0, on_mapping_notify=None):
         self.dpy = dpy
         self.key_combinations = key_combinations
@@ -29,13 +33,7 @@ class KeyGrabber:
                 self._grab_key_ignore_locks(root, keycode)
 
     def _grab_key_ignore_locks(self, window, keycode):
-        # We need to grab the key with various lock modifiers (NumLock, CapsLock, etc.)
-        # Common modifiers to ignore:
-        # Mod2 (NumLock), Lock (CapsLock), Mod5 (ScrollLock - sometimes), etc.
-        # Minimal set: None, Lock, Mod2, Lock|Mod2
-        modifiers = [0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask]
-        
-        for mod in modifiers:
+        for mod in self.IGNORED_MODIFIERS:
             window.grab_key(keycode, self.modifier | mod, True, X.GrabModeAsync, X.GrabModeAsync)
 
     def ungrab_keys(self):
@@ -45,8 +43,7 @@ class KeyGrabber:
         self.keycode_map.clear()
 
     def _ungrab_key_ignore_locks(self, window, keycode):
-        modifiers = [0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask]
-        for mod in modifiers:
+        for mod in self.IGNORED_MODIFIERS:
             try:
                 window.ungrab_key(keycode, self.modifier | mod)
             except Exception:
