@@ -18,19 +18,20 @@ class WakeFromSleepDetector:
         self.threshold_time = threshold_time
         self.last_check = time.time()
 
-    def check_sleep(self):
-        """Checks if the system has been suspended since the last check."""
-        now = time.time()
-        if (now - self.last_check) > self.threshold_time:
-            self.callback()
-        self.last_check = now
-
     def start(self):
         """Starts monitoring for system suspend/resume cycles."""
+        logger.info("Starting WakeFromSleepDetector...")
         try:
             while True:
                 time.sleep(self.wait_time)
-                self.check_sleep()
+                now = time.time()
+                # If the difference between now and the last check is significantly
+                # larger than the wait time, it means we probably slept.
+                if (now - self.last_check) > (self.wait_time + self.threshold_time):
+                    logger.info(f"System wake detected (time jump: {now - self.last_check:.2f}s)")
+                    if self.callback:
+                        self.callback()
+                self.last_check = now
         except (KeyboardInterrupt, SystemExit):
             logger.info('Exiting wake detection loop...')
 
