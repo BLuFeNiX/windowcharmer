@@ -18,7 +18,6 @@ class WindowCharmerApp:
     def __init__(self, debug=False):
         self.debug = debug
         self.wm = WindowManager()
-        self.mapper = KeyboardMapper()
         self.key_bindings = KeyBindings.get_defaults()
         
         # State
@@ -29,15 +28,10 @@ class WindowCharmerApp:
         self.debounce_timer = None
         self.timer_lock = threading.Lock()
 
-        # Connect display for grabbing hotkeys (needs dedicated connection)
-        from Xlib import display
-        self.grab_dpy = display.Display()
-
-        # Input Monitoring Services
-        self.input_services = InputServices(
-            on_rebind_callback=self._handle_rebind_request,
-            on_key_event_callback=self._monitor_callback
-        )
+        # Deferred initialization for daemon components
+        self.mapper = None
+        self.grab_dpy = None
+        self.input_services = None
 
     def do_action(self, action):
         """Execute a window manager action (tile, center, etc.)"""
@@ -110,6 +104,15 @@ class WindowCharmerApp:
 
     def run_daemon(self):
         logger.info("Starting WindowCharmer Daemon...")
+
+        # Initialize daemon-specific components
+        from Xlib import display
+        self.grab_dpy = display.Display()
+        self.mapper = KeyboardMapper()
+        self.input_services = InputServices(
+            on_rebind_callback=self._handle_rebind_request,
+            on_key_event_callback=self._monitor_callback
+        )
 
         # 1. Initial Key Swap
         self.mapper.apply_super_hyper_swap()
