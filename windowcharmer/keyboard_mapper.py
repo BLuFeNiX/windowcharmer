@@ -19,16 +19,23 @@ class KeyboardMapper:
         # Calculate keycodes/keysyms once
         self.super_l_keysym = XK.string_to_keysym('Super_L')
         self.hyper_l_keysym = XK.string_to_keysym('Hyper_L')
+        
+        # Initialize keycodes
         self.super_l_keycode = self._dpy.keysym_to_keycode(self.super_l_keysym)
         self.hyper_l_keycode = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
 
-        # Backup original mappings (for cleanup, though we don't strictly use them yet)
-        self.super_l_orig = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
+        # Backup original mappings
+        self.super_l_orig = None
+        self.hyper_l_orig = None
+        
+        self._backup_mappings()
+
+    def _backup_mappings(self):
         try:
+            self.super_l_orig = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
             self.hyper_l_orig = self._dpy.get_keyboard_mapping(self.hyper_l_keycode, 1)
-        except Exception:
-            logger.error("Error: No mapping for Hyper_L found during init.")
-            # We continue, but this might be fatal depending on setup
+        except Exception as e:
+            logger.error(f"Error backing up key mappings: {e}")
 
     def refresh_keycodes(self):
         """Re-fetch keycodes from X server if mapping changed externally."""
