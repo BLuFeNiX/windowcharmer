@@ -34,34 +34,28 @@ class KeyBindings:
         }
 
 class ScreenDimensions:
-    def __init__(self, screen_height, screen_width, center_width, measured_height=None, measured_decorations=0, panel_height=64):
-        # Allow override of full height if measured
-        if measured_height:
-            self.h_full = measured_height
-        else:
-            # Fallback: assume available height is screen minus panel
-            self.h_full = screen_height - panel_height
+    def __init__(self, screen_width, wa_y, wa_h, center_width, measured_decorations=0):
+        # Workarea dimensions
+        self.wa_y = wa_y
+        self.wa_h = wa_h
         
-        # Calculate derived dimensions
+        # Side column calculation
         self.side_width = (screen_width - center_width) // 2
         
-        # Use measured decorations if available to adjust usable area for tiling
-        self.h_decor = measured_decorations
+        # Target slot heights
+        self.h_half = wa_h // 2
+        self.h_full = wa_h
         
-        # Calculate half-height row size (subtracting decorations for tiled windows)
-        self.row_height = (self.h_full - self.h_decor) // 2
-        
-        # Define the geometry of the "zones"
+        # Geometry zones
         self.x_left = 0
         self.x_right = screen_width - self.side_width
-        self.x_center = self.side_width # Start of center column
+        self.x_center = self.side_width
         
-        self.y_top = 0
-        self.y_bottom = self.h_full - self.row_height + panel_height
+        self.y_top = wa_y
+        self.y_bottom = wa_y + self.h_half
         
         self.w_side = self.side_width
         self.w_center = center_width
-        self.h_half = self.row_height
 
 class Config:
     def __init__(self, screen_width, active_desktop, config_file='/dev/shm/tilew_state.v2.shelf'):

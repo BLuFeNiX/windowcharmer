@@ -46,19 +46,21 @@ class WindowManager:
             if active_window:
                  self.maybe_measure(active_window)
             
-            # Determine panel height if possible
-            ph = self.get_panel_height_from_workarea()
-            if ph:
-                self.panel_height = ph
-            
+            # Get workarea
+            workarea = get_property_value(self.root, self.atom.workarea)
+            if workarea:
+                # workarea is [x, y, w, h]
+                wa_x, wa_y, wa_w, wa_h = workarea[0:4]
+            else:
+                wa_x, wa_y, wa_w, wa_h = 0, 0, self.screenWidth, self.screenHeight
+
             # Update dimensions object used for calculations
             self.dim = ScreenDimensions(
-                self.screenHeight, 
                 self.screenWidth, 
+                wa_y,
+                wa_h,
                 self.config.center_width, 
-                self.config.measured_height, 
-                self.config.measured_decorations, 
-                self.panel_height
+                self.config.measured_decorations
             )
         except Exception as e:
             logger.error(f"Error updating state: {e}")
@@ -155,25 +157,55 @@ class WindowManager:
     # --- Helpers ---
 
     def move_and_resize(self, window, x, y, width, height):
-        # Compensate for GTK Frame Extents (shadows)
-        gtk_fe = self.get_gtk_frame_extents(window)
-        if gtk_fe:
-            delta_w = gtk_fe['left'] + gtk_fe['right']
-            delta_h = gtk_fe['top'] + gtk_fe['bottom'] + (self.dim.h_decor if self.dim else 0)
-            
-            # Apply adjustments
-            width += delta_w
-            height += delta_h
-            x -= delta_w // 2
-            # y might need adjustment depending on how we want to align
+        # We need to determine how much the Window Manager (WM) or the 
+        # Application (if CSD) is going to add to our requested client size.
         
-        # If maximized, we must restore first, otherwise move/resize might be ignored
+        net_fe = get_property_value(window, self.atom.extents)
+        gtk_fe = self.get_gtk_frame_extents(window)
+        
+        # Default: no decorations
+        d_l = d_r = d_t = d_b = 0
+        
+        # If both are present, we need to be careful.
+        # Usually, if gtk_fe is present, it contains the shadows.
+        # If net_fe is present, it contains the titlebar.
+        
+        if net_fe:
+            d_l += net_fe[0]
+            d_r += net_fe[1]
+            d_t += net_fe[2]
+            d_b += net_fe[3]
+            
+        if gtk_fe:
+            # For GTK windows, the 'x, y' of the window frame 
+            # actually includes the shadows. So to place the 
+            # VISIBLE part at x, y, we must shift by the shadows.
+            x -= gtk_fe['left']
+            y -= gtk_fe['top']
+            
+            # The requested size must INCLUDE the shadows 
+            # so the visible area remains the correct size.
+            width += (gtk_fe['left'] + gtk_fe['right'])
+            height += (gtk_fe['top'] + gtk_fe['bottom'])
+
+        # Now, standard X11 'configure' on a managed window 
+        # usually takes the CLIENT size.
+        client_w = width - d_l - d_r
+        client_h = height - d_t - d_b
+        
+        # If maximized, we must restore first
         if self.is_window_maximized_vertically(window):
             self.action_restore(window)
 
         # Apply changes
         value_mask = X.CWX | X.CWY | X.CWWidth | X.CWHeight
-        window.configure(value_mask=value_mask, x=x, y=y, width=width, height=height)
+        window.configure(
+            value_mask=value_mask, 
+            x=int(x), 
+            y=int(y), 
+            width=int(max(1, client_w)), 
+            height=int(max(1, client_h))
+        )
 
     def set_max_flags(self, window, v=1, h=1):
         """Sets the _NET_WM_STATE for maximization."""
