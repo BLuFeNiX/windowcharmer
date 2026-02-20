@@ -32,4 +32,4 @@ Repository = "https://github.com/BLuFeNiX/windowcharmer"
 "Bug Tracker" = "https://github.com/BLuFeNiX/windowcharmer/issues"
 
 [project.scripts]
-windowcharmer = "windowcharmer:main"
+windowcharmer = "windowcharmer.main:main"

@@ -1,1 +1,0 @@
-from .windowcharmer import main
