@@ -1,6 +1,9 @@
 import threading
 from Xlib import X, XK, display
 import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 class KeyGrabber:
     def __init__(self, dpy, key_combinations, modifier=0):
@@ -48,8 +51,8 @@ class KeyGrabber:
                         # Actions are usually quick X requests.
                         callback()
         except Exception as e:
-            print(f"KeyGrabber error: {e}")
-            traceback.print_exc()
+            logger.error(f"KeyGrabber error: {e}")
+            logger.debug(traceback.format_exc())
 
     def stop(self):
         # Clean up grabs if necessary

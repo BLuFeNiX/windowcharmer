@@ -1,5 +1,8 @@
 import time
 from threading import Thread
+import logging
+
+logger = logging.getLogger(__name__)
 
 class WakeFromSleepDetector:
     def __init__(self, callback, wait_time=5, threshold_time=10):
@@ -29,14 +32,15 @@ class WakeFromSleepDetector:
                 time.sleep(self.wait_time)
                 self.check_sleep()
         except (KeyboardInterrupt, SystemExit):
-            print('Exiting wake detection loop...')
+            logger.info('Exiting wake detection loop...')
 
 # Define a callback function
 def wakeup_action():
-    print("Wakeup detected!")
+    logger.info("Wakeup detected!")
 
 # Usage example:
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     detector = WakeFromSleepDetector(callback=wakeup_action)
     t = Thread(target=detector.start)
     t.daemon = True
@@ -49,3 +53,4 @@ if __name__ == "__main__":
             time.sleep(1)
     except KeyboardInterrupt:
         pass
+

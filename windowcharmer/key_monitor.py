@@ -3,6 +3,9 @@ from Xlib.ext import record
 from Xlib.protocol import rq
 import sys
 import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_keycode(dpy, keystring):
     return dpy.keysym_to_keycode(XK.string_to_keysym(keystring))
@@ -36,7 +39,7 @@ class KeyMonitor:
             if reply.category != record.FromServer:
                 return
             if reply.client_swapped:
-                print("* received swapped protocol data, cowardly ignored")
+                logger.warning("* received swapped protocol data, cowardly ignored")
                 return
             if not len(reply.data) or reply.data[0] < 2:
                 # not an event
@@ -52,6 +55,8 @@ class KeyMonitor:
 
 
 if __name__ == "__main__":
+    # block used for standalone testing
+    logging.basicConfig(level=logging.DEBUG)
     
     dpy = display.Display()
     super_l_keycode = get_keycode(dpy, 'Super_L')

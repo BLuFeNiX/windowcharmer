@@ -2,8 +2,11 @@ import threading
 from Xlib import X, display, protocol
 import time
 import traceback
+import logging
 
 from .config import Config, ScreenDimensions
+
+logger = logging.getLogger(__name__)
 
 # Atom cache class to avoid repeated intern_atom calls
 class AtomCache:
@@ -88,8 +91,8 @@ class WindowManager:
                 self.panel_height
             )
         except Exception as e:
-            print(f"Error updating state: {e}")
-            traceback.print_exc()
+            logger.error(f"Error updating state: {e}")
+            logger.debug(traceback.format_exc())
 
     def execute_action(self, action_name):
         """
@@ -120,14 +123,14 @@ class WindowManager:
                     if method:
                         method(win)
                     elif action_name == 'test':
-                        print(f"Test action on window {win.id}")
+                        logger.info(f"Test action on window {win.id}")
                     else:
-                        print(f"Unknown action: {action_name}")
+                        logger.warning(f"Unknown action: {action_name}")
                 
                 self.d.flush()
             except Exception as e:
-                print(f"Error executing action {action_name}: {e}")
-                traceback.print_exc()
+                logger.error(f"Error executing action {action_name}: {e}")
+                logger.debug(traceback.format_exc())
             finally:
                 self.d.ungrab_server()
                 self.d.flush()

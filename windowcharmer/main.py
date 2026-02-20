@@ -4,6 +4,7 @@ import threading
 import time
 import pyudev
 import traceback
+import logging
 from Xlib import X, XK, display
 from Xlib.ext import xtest
 
@@ -11,6 +12,9 @@ from .window_manager import WindowManager
 from .input_handler import KeyGrabber
 from .sleep_detector import WakeFromSleepDetector
 from .key_monitor import KeyMonitor
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Global manager instance
 wm = WindowManager()
@@ -73,19 +77,19 @@ def daemonize():
     try:
         hyper_l_orig = daemon_dpy.get_keyboard_mapping(hyper_l_keycode, 1)
     except Exception:
-        print("Error: No mapping for Hyper_L. Exiting.")
+        logger.error("Error: No mapping for Hyper_L. Exiting.")
         sys.exit(1)
 
     def rebind_super():
-        print("Swapping Super_L and Hyper_L...")
+        logger.info("Swapping Super_L and Hyper_L...")
         with daemon_lock:
             try:
                 change_keyboard_mapping(daemon_dpy, super_l_keycode, hyper_l_keysym)
                 change_keyboard_mapping(daemon_dpy, hyper_l_keycode, super_l_keysym)
                 daemon_dpy.sync()
             except Exception as e:
-                print(f"Error rebinding keys: {e}")
-                traceback.print_exc()
+                logger.error(f"Error rebinding keys: {e}")
+                logger.debug(traceback.format_exc())
 
     # Initial rebind
     rebind_super()
@@ -104,18 +108,18 @@ def daemonize():
             if event.detail == super_l_keycode:
                 if event.type == X.KeyPress:
                     super_pressed = True
-                    # print("Super_L key pressed")
+                    logger.debug("Super_L key pressed")
                 elif event.type == X.KeyRelease:
                     super_pressed = False
-                    # print("Super_L key released")
+                    logger.debug("Super_L key released")
                     if not key_pressed_while_super_down:
-                        # print("Forwarding super press")
+                        logger.debug("Forwarding super press")
                         with daemon_lock:
                             try:
                                 # We simulate Hyper_L keycode, which we mapped to Super_L keysym
                                 simulate_key_press_release(daemon_dpy, hyper_l_keycode)
                             except Exception as e:
-                                print(f"Error simulating key: {e}")
+                                logger.error(f"Error simulating key: {e}")
                     key_pressed_while_super_down = False
             elif super_pressed and event.type == X.KeyPress:
                 key_pressed_while_super_down = True
@@ -152,7 +156,7 @@ def daemonize():
         monitor.filter_by(subsystem='input')
         for device in iter(monitor.poll, None):
             if device.action == 'add' and device.properties.get('DEVNAME', '').startswith('/dev/input/event'):
-                print(f"Input device added, scheduling rebind...")
+                logger.info(f"Input device added, scheduling rebind...")
                 schedule_rebind()
 
     t_udev = threading.Thread(target=monitor_input_events)
@@ -165,15 +169,15 @@ def daemonize():
     grabber = KeyGrabber(grab_dpy, key_combinations, modifier=X.Mod4Mask)
     
     try:
-        print("Daemon started. Press Ctrl+C to exit.")
+        logger.info("Daemon started. Press Ctrl+C to exit.")
         grabber.start()
     except (KeyboardInterrupt, SystemExit):
         pass
     except Exception as e:
-        print(f"Error in main loop: {e}")
-        traceback.print_exc()
+        logger.error(f"Error in main loop: {e}")
+        logger.debug(traceback.format_exc())
     finally:
-        print("Restoring keyboard mapping...")
+        logger.info("Restoring keyboard mapping...")
         # Use a fresh connection for cleanup to ensure it works even if daemon_dpy is borked
         try:
             d = display.Display()
@@ -195,11 +199,14 @@ def main():
         ]
     )
     group.add_argument("-d", "--daemonize", action="store_true", help="Run as a daemon")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     
     args = parser.parse_args()
 
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
     if args.daemonize:
-        print("Starting WindowCharmer Daemon...")
+        logger.info("Starting WindowCharmer Daemon...")
         daemonize()
     else:
         do_action(args.action)
