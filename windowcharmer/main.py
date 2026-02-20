@@ -7,10 +7,8 @@ from Xlib import X
 # Components
 from .window_manager import WindowManager
 from .input_handler import KeyGrabber
-from .sleep_detector import WakeFromSleepDetector
-from .key_monitor import KeyMonitor
 from .keyboard_mapper import KeyboardMapper
-import pyudev
+from .input_services import InputServices
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -32,6 +30,12 @@ class WindowCharmerApp:
         # Connect display for grabbing hotkeys (needs dedicated connection)
         from Xlib import display
         self.grab_dpy = display.Display()
+
+        # Input Monitoring Services
+        self.input_services = InputServices(
+            on_rebind_callback=self._handle_rebind_request,
+            on_key_event_callback=self._monitor_callback
+        )
 
     def do_action(self, action):
         """Execute a window manager action (tile, center, etc.)"""
@@ -77,9 +81,13 @@ class WindowCharmerApp:
             else:
                 logger.debug(f"MappingNotify is for {event.request}, ignoring.")
                 return
-
-        # Delegate the actual logic to the mapper
-        self.mapper.apply_super_hyper_swap()
+        
+        # If called without an event (e.g. from udev or sleep), debounce it
+        if event is None:
+            self._schedule_rebind()
+        else:
+            # If from X11 event (MappingNotify), run immediately as we are already in an event loop context
+            self.mapper.apply_super_hyper_swap()
 
     def _monitor_callback(self, dpy, event):
         """
@@ -113,18 +121,8 @@ class WindowCharmerApp:
         with self.timer_lock:
             if self.debounce_timer:
                 self.debounce_timer.cancel()
-            self.debounce_timer = threading.Timer(0.25, self._handle_rebind_request)
+            self.debounce_timer = threading.Timer(0.25, self.mapper.apply_super_hyper_swap)
             self.debounce_timer.start()
-
-    def _monitor_input_events(self):
-        """Monitor udev for keyboard plug/unplug events."""
-        context = pyudev.Context()
-        monitor = pyudev.Monitor.from_netlink(context)
-        monitor.filter_by(subsystem='input')
-        for device in iter(monitor.poll, None):
-            if device.action == 'add' and device.properties.get('DEVNAME', '').startswith('/dev/input/event'):
-                logger.info(f"Input device added, scheduling rebind...")
-                self._schedule_rebind()
 
     def run_daemon(self):
         logger.info("Starting WindowCharmer Daemon...")
@@ -132,26 +130,10 @@ class WindowCharmerApp:
         # 1. Initial Key Swap
         self.mapper.apply_super_hyper_swap()
 
-        # 2. Start Key Monitor (Passthrough Logic)
-        from Xlib import display
-        monitor_dpy = display.Display()
-        monitor = KeyMonitor(monitor_dpy, self._monitor_callback)
-        t_mon = threading.Thread(target=monitor.start)
-        t_mon.daemon = True
-        t_mon.start()
+        # 2. Start Background Services (Key Monitor, Sleep Monitor, Udev Monitor)
+        self.input_services.start_all()
 
-        # 3. Start Sleep Detector
-        detector = WakeFromSleepDetector(callback=lambda: self._handle_rebind_request())
-        t_sleep = threading.Thread(target=detector.start)
-        t_sleep.daemon = True
-        t_sleep.start()
-
-        # 4. Start Udev Monitor
-        t_udev = threading.Thread(target=self._monitor_input_events)
-        t_udev.daemon = True
-        t_udev.start()
-
-        # 5. Start Main Hotkey Grabber (Blocking Loop)
+        # 3. Start Main Hotkey Grabber (Blocking Loop)
         grabber = KeyGrabber(
             self.grab_dpy, 
             self._setup_key_bindings(), 
@@ -168,6 +150,7 @@ class WindowCharmerApp:
             logger.error(f"Error in main loop: {e}")
             logger.debug(traceback.format_exc())
         finally:
+            self.input_services.stop_all()
             self.mapper.cleanup()
 
 def main():
