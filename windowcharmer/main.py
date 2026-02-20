@@ -9,6 +9,7 @@ from .window_manager import WindowManager
 from .input_handler import KeyGrabber
 from .keyboard_mapper import KeyboardMapper
 from .input_services import InputServices
+from .config import KeyBindings
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ class WindowCharmerApp:
         self.debug = debug
         self.wm = WindowManager()
         self.mapper = KeyboardMapper()
+        self.key_bindings = KeyBindings.get_defaults()
         
         # State
         self.super_pressed = False
@@ -39,36 +41,18 @@ class WindowCharmerApp:
 
     def do_action(self, action):
         """Execute a window manager action (tile, center, etc.)"""
+        if action == 'exit':
+            sys.exit()
         self.wm.execute_action(action)
 
     def _setup_key_bindings(self):
         """Define the hotkey -> action mapping."""
-        return {
-            'Up':           lambda: self.do_action("max"),
-            'Down':         lambda: self.do_action("center"),
-            'Left':         lambda: self.do_action("left"),
-            'Right':        lambda: self.do_action("right"),
-            'space':        lambda: self.do_action("restore"),
-
-            'KP_Home':      lambda: self.do_action("top-left"),
-            'KP_Up':        lambda: self.do_action("top-center"),
-            'KP_Page_Up':   lambda: self.do_action("top-right"),
-            'KP_Left':      lambda: self.do_action("left"),
-            'KP_Begin':     lambda: self.do_action("center"),
-            'KP_Right':     lambda: self.do_action("right"),
-            'KP_End':       lambda: self.do_action("bottom-left"),
-            'KP_Down':      lambda: self.do_action("bottom-center"),
-            'KP_Page_Down': lambda: self.do_action("bottom-right"),
-            'KP_Insert':    lambda: self.do_action("restore"),
-
-            'KP_Prior':     lambda: self.do_action("top-right"),
-            'KP_Next':      lambda: self.do_action("bottom-right"),
-
-            'KP_Add':       lambda: self.do_action("bigger"),
-            'KP_Subtract':  lambda: self.do_action("smaller"),
-
-            'BackSpace':    lambda: sys.exit(),
-        }
+        # Map string actions to callables
+        bindings = {}
+        for key, action_name in self.key_bindings.items():
+            # We use a default argument (a=action_name) to capture the value in the closure
+            bindings[key] = lambda a=action_name: self.do_action(a)
+        return bindings
 
     def _handle_rebind_request(self, event=None):
         """
