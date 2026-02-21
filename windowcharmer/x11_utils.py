@@ -1,10 +1,14 @@
+from __future__ import annotations
+from typing import Any
 from Xlib import X
+from Xlib.display import Display
+from Xlib.xobject.drawable import Window
 
 class AtomCache:
-    def __init__(self, dpy):
+    def __init__(self, dpy: Display) -> None:
         self.d = dpy
-        self._cache = {}
-        self._atom_names = {
+        self._cache: dict[str, int] = {}
+        self._atom_names: dict[str, str] = {
             'state': '_NET_WM_STATE',
             'v_max': '_NET_WM_STATE_MAXIMIZED_VERT',
             'h_max': '_NET_WM_STATE_MAXIMIZED_HORZ',
@@ -20,7 +24,7 @@ class AtomCache:
             'name_fallback': 'WM_NAME',
         }
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> int:
         if name in self._atom_names:
             atom_name = self._atom_names[name]
             if atom_name not in self._cache:
@@ -29,7 +33,7 @@ class AtomCache:
         else:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-def get_property_value(window, atom, property_type=X.AnyPropertyType):
+def get_property_value(window: Window, atom: int, property_type: int = X.AnyPropertyType) -> Any | None:
     """Helper to get a window property value cleanly."""
     try:
         prop = window.get_full_property(atom, property_type)

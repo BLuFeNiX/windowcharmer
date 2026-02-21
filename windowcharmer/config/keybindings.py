@@ -2,7 +2,7 @@ class KeyBindings:
     """Default key bindings mapping keysyms to actions."""
 
     @staticmethod
-    def get_defaults():
+    def get_defaults() -> dict[str, str]:
         return {
             'Up':           'max',
             'Down':         'center',

@@ -1,9 +1,12 @@
+from __future__ import annotations
 import threading
 import logging
+from typing import Callable, Any
+from Xlib import display
+from Xlib.display import Display
 import pyudev
 from .sleep_detector import WakeFromSleepDetector
 from .key_monitor import KeyMonitor
-from Xlib import display
 
 logger = logging.getLogger(__name__)
 
@@ -14,31 +17,33 @@ class InputServices:
     - Udev device events (keyboard plug/unplug)
     - Low-level X11 key monitoring (Passthrough logic)
     """
-    def __init__(self, on_rebind_callback, on_key_event_callback):
+    def __init__(self, on_rebind_callback: Callable[[], None], on_key_event_callback: Callable[[Any], None]) -> None:
         self.on_rebind = on_rebind_callback
         self.on_key_event = on_key_event_callback
-        self._threads = []
+        self._threads: list[threading.Thread] = []
         self._stop_event = threading.Event()
 
-    def start_all(self):
+    def start_all(self) -> None:
         """Start all monitoring threads."""
         self._start_sleep_monitor()
         self._start_udev_monitor()
         self._start_key_monitor()
 
-    def _start_sleep_monitor(self):
+    def _start_sleep_monitor(self) -> None:
         detector = WakeFromSleepDetector(callback=self.on_rebind)
         t = threading.Thread(target=detector.start, daemon=True)
         t.start()
         self._threads.append(t)
         logger.debug("Sleep monitor started")
 
-    def _start_udev_monitor(self):
-        def monitor_loop():
+    def _start_udev_monitor(self) -> None:
+        def monitor_loop() -> None:
             context = pyudev.Context()
             monitor = pyudev.Monitor.from_netlink(context)
             monitor.filter_by(subsystem='input')
-            for device in iter(monitor.poll, None):
+            
+            # Using iterator protocol for monitor
+            for device in monitor:
                 if self._stop_event.is_set():
                     break
                 if device.action == 'add' and device.properties.get('DEVNAME', '').startswith('/dev/input/event'):
@@ -50,16 +55,19 @@ class InputServices:
         self._threads.append(t)
         logger.debug("Udev monitor started")
 
-    def _start_key_monitor(self):
-        # KeyMonitor needs its own display connection
-        monitor_dpy = display.Display()
-        monitor = KeyMonitor(monitor_dpy, self.on_key_event)
-        t = threading.Thread(target=monitor.start, daemon=True)
+    def _start_key_monitor(self) -> None:
+        def monitor_wrapper() -> None:
+             # KeyMonitor needs its own display connection
+             monitor_dpy: Display = display.Display()
+             monitor = KeyMonitor(monitor_dpy, self.on_key_event)
+             monitor.start()
+
+        t = threading.Thread(target=monitor_wrapper, daemon=True)
         t.start()
         self._threads.append(t)
         logger.debug("Key monitor started")
 
-    def stop_all(self):
+    def stop_all(self) -> None:
         self._stop_event.set()
         # Threads are daemon threads, so they will be killed when main process exits,
         # but we set the event to allow clean loop exit where possible.

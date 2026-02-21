@@ -1,5 +1,8 @@
+from __future__ import annotations
+from typing import Callable, Any
 from Xlib import X, XK, display
 from Xlib.ext import record
+from Xlib.display import Display
 from Xlib.protocol import rq
 import sys
 import traceback
@@ -7,15 +10,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def get_keycode(dpy, keystring):
+def get_keycode(dpy: Display, keystring: str) -> int:
     return dpy.keysym_to_keycode(XK.string_to_keysym(keystring))
 
 class KeyMonitor:
-    def __init__(self, dpy, callback):
+    def __init__(self, dpy: Display, callback: Callable[[Any], None]) -> None:
         self.dpy = dpy
         self.callback = callback
 
-    def start(self):
+    def start(self) -> None:
         if not self.dpy.has_extension("RECORD"):
             raise OSError("RECORD extension not found.")
         
@@ -35,7 +38,7 @@ class KeyMonitor:
             }]
         )
 
-        def inner_callback(reply):
+        def inner_callback(reply: Any) -> None:
             if reply.category != record.FromServer:
                 return
             if reply.client_swapped:
@@ -47,12 +50,12 @@ class KeyMonitor:
 
             data = reply.data
             while len(data):
-                event, data = rq.EventField(None).parse_binary_value(data, self.dpy.display, None, None)
+                event, data = rq.EventField('event').parse_binary_value(data, self.dpy.display, None, None)
                 if event.type == X.MappingNotify:
                     # Update Xlib's internal mapping so keysym_to_keycode works correctly
                     self.dpy.refresh_keyboard_mapping(event)
                 
-                self.callback(self.dpy, event)
+                self.callback(event)
 
         self.dpy.record_enable_context(ctx, inner_callback)
         self.dpy.record_free_context(ctx)
@@ -65,7 +68,7 @@ if __name__ == "__main__":
     dpy = display.Display()
     super_l_keycode = get_keycode(dpy, 'Super_L')
 
-    def callback(dpy, event):
+    def callback(event: Any) -> None:
         if event.type == X.KeyPress or event.type == X.KeyRelease:
             if event.detail == super_l_keycode:
                 if event.type == X.KeyPress:

@@ -1,11 +1,13 @@
+from __future__ import annotations
 import time
 from threading import Thread
 import logging
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
 class WakeFromSleepDetector:
-    def __init__(self, callback, wait_time=5, threshold_time=10):
+    def __init__(self, callback: Callable[[], None], wait_time: int = 5, threshold_time: int = 10) -> None:
         """
         Initializes the detector.
 
@@ -18,7 +20,7 @@ class WakeFromSleepDetector:
         self.threshold_time = threshold_time
         self.last_check = time.time()
 
-    def start(self):
+    def start(self) -> None:
         """Starts monitoring for system suspend/resume cycles."""
         logger.info("Starting WakeFromSleepDetector...")
         try:
@@ -29,14 +31,14 @@ class WakeFromSleepDetector:
                 # larger than the wait time, it means we probably slept.
                 if (now - self.last_check) > (self.wait_time + self.threshold_time):
                     logger.info(f"System wake detected (time jump: {now - self.last_check:.2f}s)")
-                    if self.callback:
+                    if self.callback is not None:
                         self.callback()
                 self.last_check = now
         except (KeyboardInterrupt, SystemExit):
             logger.info('Exiting wake detection loop...')
 
 # Define a callback function
-def wakeup_action():
+def wakeup_action() -> None:
     logger.info("Wakeup detected!")
 
 # Usage example:

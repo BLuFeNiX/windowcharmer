@@ -1,7 +1,9 @@
+from __future__ import annotations
 import threading
 import sys
 import argparse
 import logging
+from typing import Callable, Any
 from Xlib import X
 
 # Components
@@ -15,40 +17,42 @@ import traceback
 logger = logging.getLogger(__name__)
 
 class WindowCharmerApp:
-    def __init__(self, debug=False):
+    def __init__(self, debug: bool = False) -> None:
         self.debug = debug
         self.wm = WindowManager()
         self.key_bindings = KeyBindings.get_defaults()
         
         # State
-        self.super_pressed = False
-        self.key_pressed_while_super_down = False
+        self.super_pressed: bool = False
+        self.key_pressed_while_super_down: bool = False
         
         # Timers
-        self.debounce_timer = None
+        self.debounce_timer: threading.Timer | None = None
         self.timer_lock = threading.Lock()
 
         # Deferred initialization for daemon components
-        self.mapper = None
-        self.grab_dpy = None
-        self.input_services = None
+        self.mapper: KeyboardMapper | None = None
+        self.grab_dpy: Any | None = None
+        self.input_services: InputServices | None = None
 
-    def do_action(self, action):
+    def do_action(self, action: str) -> None:
         """Execute a window manager action (tile, center, etc.)"""
         if action == 'exit':
             sys.exit()
         self.wm.execute_action(action)
 
-    def _setup_key_bindings(self):
+    def _setup_key_bindings(self) -> dict[str, Callable[[], None]]:
         """Define the hotkey -> action mapping."""
         # Map string actions to callables
-        bindings = {}
+        bindings: dict[str, Callable[[], None]] = {}
         for key, action_name in self.key_bindings.items():
             # We use a default argument (a=action_name) to capture the value in the closure
-            bindings[key] = lambda a=action_name: self.do_action(a)
+            def make_handler(a: str = action_name) -> Callable[[], None]:
+                return lambda: self.do_action(a)
+            bindings[key] = make_handler()
         return bindings
 
-    def _handle_rebind_request(self, event=None):
+    def _handle_rebind_request(self, event: Any | None = None) -> None:
         """
         Callback for when a rebind is requested (Sleep, Udev, X11 MappingNotify).
         Handles debouncing and filtering.
@@ -65,13 +69,17 @@ class WindowCharmerApp:
             self._schedule_rebind()
         else:
             # If from X11 event (MappingNotify), run immediately as we are already in an event loop context
-            self.mapper.apply_super_hyper_swap()
+            if self.mapper:
+                self.mapper.apply_super_hyper_swap()
 
-    def _monitor_callback(self, dpy, event):
+    def _monitor_callback(self, event: Any) -> None:
         """
         Callback for the low-level KeyMonitor (XRecord).
         Handles updating keycode cache and detecting Super key passthrough.
         """
+        if not self.mapper:
+             return
+
         # 1. Handle Mapping Changes
         if event.type == X.MappingNotify:
             self.mapper.refresh_keycodes()
@@ -94,21 +102,29 @@ class WindowCharmerApp:
             elif self.super_pressed and event.type == X.KeyPress:
                 self.key_pressed_while_super_down = True
 
-    def _schedule_rebind(self):
+    def _schedule_rebind(self) -> None:
         """Debounce the rebind call for udev events."""
         with self.timer_lock:
             if self.debounce_timer:
                 self.debounce_timer.cancel()
-            self.debounce_timer = threading.Timer(0.25, self.mapper.apply_super_hyper_swap)
-            self.debounce_timer.start()
+            
+            if self.mapper:
+                 self.debounce_timer = threading.Timer(0.25, self.mapper.apply_super_hyper_swap)
+                 self.debounce_timer.start()
 
-    def run_daemon(self):
+    def run_daemon(self) -> None:
         logger.info("Starting WindowCharmer Daemon...")
 
         # Initialize daemon-specific components
         from Xlib import display
         self.grab_dpy = display.Display()
         self.mapper = KeyboardMapper()
+        
+        # Note: on_key_event_callback signature mismatch in InputServices vs callback
+        # InputServices expects: Callable[[Any], None]
+        # _monitor_callback signature: (event: Any) -> None
+        # So we can pass it directly.
+        
         self.input_services = InputServices(
             on_rebind_callback=self._handle_rebind_request,
             on_key_event_callback=self._monitor_callback
@@ -137,11 +153,33 @@ class WindowCharmerApp:
             logger.error(f"Error in main loop: {e}")
             logger.debug(traceback.format_exc())
         finally:
-            self.input_services.stop_all()
-            self.mapper.cleanup()
+            if self.input_services:
+                self.input_services.stop_all()
+            if self.mapper:
+                self.mapper.cleanup()
 
-def main():
+def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    
+    parser = argparse.ArgumentParser()
+    # Create a mutually exclusive group but make it optional so we can check daemonize flag
+    # However, original logic was: required=True group for (action OR daemonize).
+    
+    # Let's fix the argument parsing logic to be more standard while preserving behavior
+    # We want: either "action" (pos) OR "-d" (flag).
+    
+    # Actually, argparse handles mutually exclusive groups well.
+    # We can keep the existing structure if we want, or adjust.
+    # The existing structure:
+    # group = parser.add_mutually_exclusive_group(required=True)
+    # group.add_argument("action", ...)  <-- This consumes a positional arg
+    # group.add_argument("-d", ...)      <-- This is a flag
+    
+    # This works: `windowcharmer left` OR `windowcharmer -d`
+    # But `windowcharmer left -d` fails (good).
+    # `windowcharmer` fails (good).
+    
+    # We need to recreate the group logic exactly as it was or better.
     
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
@@ -166,7 +204,11 @@ def main():
     if args.daemonize:
         app.run_daemon()
     else:
-        app.do_action(args.action)
+        # action is guaranteed to be not None because group is required 
+        # AND daemonize is False (so action must be present)
+        # Type checker might complain though since nargs='?'.
+        if args.action:
+            app.do_action(args.action)
 
 if __name__ == "__main__":
     main()
