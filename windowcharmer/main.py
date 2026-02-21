@@ -149,7 +149,7 @@ def main():
         choices=[
             'left', 'center', 'right', 'top-left', 'bottom-left',
             'top-right', 'bottom-right', 'top-center', 'bottom-center',
-            'max', 'restore', 'cycle', 'install', 'bigger', 'smaller', 'test'
+            'max', 'restore', 'bigger', 'smaller',
         ]
     )
     group.add_argument("-d", "--daemonize", action="store_true", help="Run as a daemon")
