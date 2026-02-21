@@ -1,23 +1,40 @@
+from dataclasses import dataclass, field
+
+@dataclass(frozen=True)
 class ScreenDimensions:
-    def __init__(self, screen_width, wa_y, wa_h, center_width, measured_decorations=0):
-        # Workarea dimensions
-        self.wa_y = wa_y
-        self.wa_h = wa_h
+    screen_width: int
+    wa_y: int
+    wa_h: int
+    center_width: int
+    measured_decorations: int = 0
 
-        # Side column calculation
-        self.side_width = (screen_width - center_width) // 2
+    # Calculated fields
+    side_width: int = field(init=False)
+    h_half: int = field(init=False)
+    h_full: int = field(init=False)
+    x_left: int = field(init=False)
+    x_right: int = field(init=False)
+    x_center: int = field(init=False)
+    y_top: int = field(init=False)
+    y_bottom: int = field(init=False)
+    w_side: int = field(init=False)
+    w_center: int = field(init=False)
 
-        # Target slot heights
-        self.h_half = wa_h // 2
-        self.h_full = wa_h
-
-        # Geometry zones
-        self.x_left = 0
-        self.x_right = screen_width - self.side_width
-        self.x_center = self.side_width
-
-        self.y_top = wa_y
-        self.y_bottom = wa_y + self.h_half
-
-        self.w_side = self.side_width
-        self.w_center = center_width
+    def __post_init__(self) -> None:
+        # Calculate derived values. Since the class is frozen, we use object.__setattr__
+        side_width = (self.screen_width - self.center_width) // 2
+        object.__setattr__(self, 'side_width', side_width)
+        
+        h_half = self.wa_h // 2
+        object.__setattr__(self, 'h_half', h_half)
+        object.__setattr__(self, 'h_full', self.wa_h)
+        
+        object.__setattr__(self, 'x_left', 0)
+        object.__setattr__(self, 'x_right', self.screen_width - side_width)
+        object.__setattr__(self, 'x_center', side_width)
+        
+        object.__setattr__(self, 'y_top', self.wa_y)
+        object.__setattr__(self, 'y_bottom', self.wa_y + h_half)
+        
+        object.__setattr__(self, 'w_side', side_width)
+        object.__setattr__(self, 'w_center', self.center_width)
