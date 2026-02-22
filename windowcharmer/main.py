@@ -12,6 +12,7 @@ from .input_handler import KeyGrabber
 from .keyboard_mapper import KeyboardMapper
 from .input_services import InputServices
 from .config import KeyBindings
+from .input.super_passthrough import SuperPassthroughTracker
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -22,9 +23,7 @@ class WindowCharmerApp:
         self.wm = WindowManager()
         self.key_bindings = KeyBindings.get_defaults()
         
-        # State
-        self.super_pressed: bool = False
-        self.key_pressed_while_super_down: bool = False
+        self.passthrough_tracker: SuperPassthroughTracker | None = None
         
         # Timers
         self.debounce_timer: threading.Timer | None = None
@@ -83,24 +82,14 @@ class WindowCharmerApp:
         # 1. Handle Mapping Changes
         if event.type == X.MappingNotify:
             self.mapper.refresh_keycodes()
+            if self.passthrough_tracker:
+                 self.passthrough_tracker.update_keycode(self.mapper.super_l_keycode)
             return
 
         # 2. Handle Key Press/Release for Super/Hyper Passthrough Logic
         if event.type == X.KeyPress or event.type == X.KeyRelease:
-            # Check against current keycodes from mapper
-            if event.detail == self.mapper.super_l_keycode:
-                if event.type == X.KeyPress:
-                    self.super_pressed = True
-                    logger.debug("Super_L key pressed")
-                elif event.type == X.KeyRelease:
-                    self.super_pressed = False
-                    logger.debug("Super_L key released")
-                    if not self.key_pressed_while_super_down:
-                        logger.debug("Forwarding super press")
-                        self.mapper.simulate_hyper_press()
-                    self.key_pressed_while_super_down = False
-            elif self.super_pressed and event.type == X.KeyPress:
-                self.key_pressed_while_super_down = True
+            if self.passthrough_tracker:
+                 self.passthrough_tracker.handle_event(event)
 
     def _schedule_rebind(self) -> None:
         """Debounce the rebind call for udev events."""
@@ -119,6 +108,11 @@ class WindowCharmerApp:
         from Xlib import display
         self.grab_dpy = display.Display()
         self.mapper = KeyboardMapper()
+        
+        self.passthrough_tracker = SuperPassthroughTracker(
+            self.mapper.super_l_keycode,
+            lambda: self.mapper.simulate_hyper_press() if self.mapper else None
+        )
         
         # Note: on_key_event_callback signature mismatch in InputServices vs callback
         # InputServices expects: Callable[[Any], None]
