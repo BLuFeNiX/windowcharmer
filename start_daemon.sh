@@ -21,4 +21,4 @@ fi
 
 # run daemon
 export PYTHONUNBUFFERED=1
-windowcharmer -d
+windowcharmer

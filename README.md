@@ -14,12 +14,10 @@ pip install -e .
 
 ## Usage
 
-### Daemon Mode
-
 ```sh
 cd windowcharmer
 source .venv/bin/activate
-windowcharmer -d
+windowcharmer
 ```
 
 You will likely want to run this automatically on login, which is an exercise left for the user, but [start_daemon.sh](start_daemon.sh) will work for most users by simply adding that file to your startup programs list.
@@ -59,15 +57,6 @@ key_combinations = {
 ```
 
 For example, to tile the window to the left, press `Super` and the `left arrow` key. To kill the daemon, press `Super+backspace`.
-
-### Scripting
-
-```
-usage: windowcharmer [-h] [-d]
-                     [{left,center,right,top-left,bottom-left,top-right,bottom-right,top-center,bottom-center,max,restore,cycle,install,bigger,smaller,test}]
-```
-
-For example, to move the currently focused window to the right side of the screen: `windowcharmer right`
 
 ## Support
 
