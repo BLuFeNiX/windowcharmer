@@ -7,7 +7,7 @@ from Xlib.xobject.drawable import Window
 import traceback
 import logging
 
-from ..config import Config, ScreenDimensions
+from ..config import Config, ScreenDimensions, TileAction
 from ..x11.display_pool import DisplayPool
 from ..x11.utils import AtomCache, get_property_value
 from .zones import determine_tile_zone
@@ -62,7 +62,7 @@ class WindowManager:
             logger.error(f"Error updating state: {e}")
             logger.debug(traceback.format_exc())
 
-    def execute_action(self, action_name: str) -> None:
+    def execute_action(self, action: TileAction) -> None:
         """
         Thread-safe entry point for performing a tiling action.
         Grabs the X server to ensure atomic window updates.
@@ -74,21 +74,21 @@ class WindowManager:
                 
                 win = self.get_active_window()
                 
-                if action_name == 'bigger':
+                if action == TileAction.BIGGER:
                     self.resize_all_windows(1)
-                elif action_name == 'smaller':
+                elif action == TileAction.SMALLER:
                     self.resize_all_windows(-1)
                 elif win:
-                    method_name = f"action_{action_name.replace('-', '_')}"
+                    method_name = f"action_{action.value.replace('-', '_')}"
                     method = getattr(self, method_name, None)
                     if method:
                         method(win)
                     else:
-                        logger.warning(f"Unknown action: {action_name}")
+                        logger.warning(f"Unknown action: {action}")
                 
                 self.d.flush()
             except Exception as e:
-                logger.error(f"Error executing action {action_name}: {e}")
+                logger.error(f"Error executing action {action}: {e}")
                 logger.debug(traceback.format_exc())
             finally:
                 self.d.ungrab_server()

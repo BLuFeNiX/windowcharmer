@@ -11,7 +11,7 @@ from .tiling.manager import WindowManager
 from .input.key_grabber import KeyGrabber
 from .x11.keyboard_mapper import KeyboardMapper
 from .input.services import InputServices
-from .config import KeyBindings
+from .config import KeyBindings, TileAction
 from .input.super_passthrough import SuperPassthroughTracker
 import traceback
 
@@ -21,7 +21,7 @@ class WindowCharmerApp:
     def __init__(self, debug: bool = False) -> None:
         self.debug = debug
         self.wm = WindowManager()
-        self.key_bindings = KeyBindings.get_defaults()
+        self.key_bindings = KeyBindings.load()
         
         self.passthrough_tracker: SuperPassthroughTracker | None = None
         
@@ -34,19 +34,19 @@ class WindowCharmerApp:
         self.grab_dpy: Any | None = None
         self.input_services: InputServices | None = None
 
-    def do_action(self, action: str) -> None:
+    def do_action(self, action: TileAction) -> None:
         """Execute a window manager action (tile, center, etc.)"""
-        if action == 'exit':
+        if action == TileAction.EXIT:
             sys.exit()
         self.wm.execute_action(action)
 
     def _setup_key_bindings(self) -> dict[str, Callable[[], None]]:
         """Define the hotkey -> action mapping."""
-        # Map string actions to callables
+        # Map TileAction enum values to callables
         bindings: dict[str, Callable[[], None]] = {}
-        for key, action_name in self.key_bindings.items():
-            # We use a default argument (a=action_name) to capture the value in the closure
-            def make_handler(a: str = action_name) -> Callable[[], None]:
+        for key, action in self.key_bindings.items():
+            # We use a default argument (a=action) to capture the value in the closure
+            def make_handler(a: TileAction = action) -> Callable[[], None]:
                 return lambda: self.do_action(a)
             bindings[key] = make_handler()
         return bindings

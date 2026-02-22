@@ -2,5 +2,6 @@ from __future__ import annotations
 from .settings import Config
 from .keybindings import KeyBindings
 from .dimensions import ScreenDimensions
+from .actions import TileAction
 
-__all__ = ["Config", "KeyBindings", "ScreenDimensions"]
+__all__ = ["Config", "KeyBindings", "ScreenDimensions", "TileAction"]
