@@ -88,8 +88,6 @@ class KeyboardMapper:
         """Restore original mappings."""
         logger.info("Restoring keyboard mapping...")
         try:
-            # Use a fresh connection or the existing one? Existing is fine if we lock or are shutting down.
-            # But main.py used a fresh one. Let's try existing first.
             if self.super_l_orig is not None:
                 self._dpy.change_keyboard_mapping(self.super_l_keycode, self.super_l_orig)
             if self.hyper_l_orig is not None:

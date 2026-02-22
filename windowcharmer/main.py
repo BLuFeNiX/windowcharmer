@@ -7,10 +7,10 @@ from typing import Callable, Any
 from Xlib import X
 
 # Components
-from .window_manager import WindowManager
-from .input_handler import KeyGrabber
-from .keyboard_mapper import KeyboardMapper
-from .input_services import InputServices
+from .tiling.manager import WindowManager
+from .input.key_grabber import KeyGrabber
+from .x11.keyboard_mapper import KeyboardMapper
+from .input.services import InputServices
 from .config import KeyBindings
 from .input.super_passthrough import SuperPassthroughTracker
 import traceback

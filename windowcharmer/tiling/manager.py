@@ -7,9 +7,9 @@ from Xlib.xobject.drawable import Window
 import traceback
 import logging
 
-from .config import Config, ScreenDimensions
-from .x11_utils import AtomCache, get_property_value
-from .tiling.zones import determine_tile_zone
+from ..config import Config, ScreenDimensions
+from ..x11.utils import AtomCache, get_property_value
+from .zones import determine_tile_zone
 
 logger = logging.getLogger(__name__)
 
@@ -184,13 +184,6 @@ class WindowManager:
 
     def set_max_flags(self, window: Window, v: int = 1, h: int = 1) -> None:
         """Sets the _NET_WM_STATE for maximization."""
-        # 0: _NET_WM_STATE_REMOVE
-        # 1: _NET_WM_STATE_ADD
-        # 2: _NET_WM_STATE_TOGGLE
-        
-        # We send a client message to the root window to ask the WM to change state
-        # This is the standard EWMH way.
-        
         data = [v, self.atom.v_max, 0, 0, 0]
         self.send_client_message(window, self.atom.state, data)
         
@@ -276,4 +269,3 @@ class WindowManager:
             method = getattr(self, method_name, None)
             if method:
                 method(win)
-
