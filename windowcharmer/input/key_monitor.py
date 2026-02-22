@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Callable, Any
-from Xlib import X, XK, display
+from Xlib import X, XK
 from Xlib.ext import record
 from Xlib.display import Display
 from Xlib.protocol import rq
@@ -66,7 +66,8 @@ if __name__ == "__main__":
     # block used for standalone testing
     logging.basicConfig(level=logging.DEBUG)
     
-    dpy = display.Display()
+    from ..x11.display_pool import DisplayPool
+    dpy = DisplayPool.get_display("standalone_monitor")
     super_l_keycode = get_keycode(dpy, 'Super_L')
 
     def callback(event: Any) -> None:

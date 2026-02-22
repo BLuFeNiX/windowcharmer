@@ -2,7 +2,7 @@ from __future__ import annotations
 import threading
 import logging
 from typing import Callable, Any
-from Xlib import display
+from ..x11.display_pool import DisplayPool
 from Xlib.display import Display
 import pyudev
 from .sleep_detector import WakeFromSleepDetector
@@ -60,7 +60,7 @@ class InputServices:
     def _start_key_monitor(self) -> None:
         def monitor_wrapper() -> None:
              # KeyMonitor needs its own display connection
-             monitor_dpy: Display = display.Display()
+             monitor_dpy: Display = DisplayPool.get_display("monitor")
              monitor = KeyMonitor(monitor_dpy, self.on_key_event)
              monitor.start()
 

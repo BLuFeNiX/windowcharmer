@@ -4,6 +4,7 @@ import logging
 from typing import Any
 from Xlib import X, XK, display
 from Xlib.ext import xtest
+from .display_pool import DisplayPool
 from Xlib.display import Display
 import traceback
 
@@ -17,7 +18,7 @@ class KeyboardMapper:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # We need a dedicated display connection for mapping operations
-        self._dpy: Display = display.Display()
+        self._dpy: Display = DisplayPool.get_display("mapper")
         
         # Calculate keycodes/keysyms once
         self.super_l_keysym: int = XK.string_to_keysym('Super_L')

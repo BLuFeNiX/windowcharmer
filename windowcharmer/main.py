@@ -105,8 +105,8 @@ class WindowCharmerApp:
         logger.info("Starting WindowCharmer Daemon...")
 
         # Initialize daemon-specific components
-        from Xlib import display
-        self.grab_dpy = display.Display()
+        from .x11.display_pool import DisplayPool
+        self.grab_dpy = DisplayPool.get_display("grabber")
         self.mapper = KeyboardMapper()
         
         self.passthrough_tracker = SuperPassthroughTracker(

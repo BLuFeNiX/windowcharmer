@@ -8,6 +8,7 @@ import traceback
 import logging
 
 from ..config import Config, ScreenDimensions
+from ..x11.display_pool import DisplayPool
 from ..x11.utils import AtomCache, get_property_value
 from .zones import determine_tile_zone
 
@@ -20,7 +21,7 @@ class WindowManager:
         We use a separate connection to avoid threading conflicts with the global key monitor.
         """
         self._lock = threading.Lock()
-        self.d: Display = display.Display()
+        self.d: Display = DisplayPool.get_display("wm")
         self.atom = AtomCache(self.d)
         
         screen = self.d.screen()
