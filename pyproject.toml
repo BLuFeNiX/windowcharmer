@@ -12,7 +12,7 @@ dependencies = [
   "python-xlib>=0.33",
   "pyudev>=0.24.3"
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 authors = [
   {name = "Chase Montgomery", email = "blufenix@blufenix.net"}
 ]
