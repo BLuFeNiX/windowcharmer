@@ -1,7 +1,6 @@
 from __future__ import annotations
-import threading
 from typing import Callable, Any
-from Xlib import X, XK, display
+from Xlib import X, XK
 from Xlib.display import Display
 import traceback
 import logging

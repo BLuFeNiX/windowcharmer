@@ -83,7 +83,7 @@ if __name__ == "__main__":
         monitor.start()
     except (KeyboardInterrupt, SystemExit):
         pass
-    except:
+    except Exception:
         print("Unexpected error:", sys.exc_info()[0])
         traceback.print_exc()
     finally:

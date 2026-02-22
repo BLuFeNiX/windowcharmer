@@ -2,7 +2,7 @@ from __future__ import annotations
 import threading
 import logging
 from typing import Any
-from Xlib import X, XK, display
+from Xlib import X, XK
 from Xlib.ext import xtest
 from .display_pool import DisplayPool
 from Xlib.display import Display

@@ -1,7 +1,6 @@
 from __future__ import annotations
 import threading
-from typing import Any
-from Xlib import X, display, protocol
+from Xlib import X, protocol
 from Xlib.display import Display
 from Xlib.xobject.drawable import Window
 import traceback
@@ -44,12 +43,12 @@ class WindowManager:
             # Re-read config which might have changed (e.g. ratio index)
             self.config = Config(self.screenWidth, self.active_desktop)
             
-            # Get the desktop workarea [x, y, width, height
+            # Get the desktop workarea [x, y, width, height]
             workarea = get_property_value(self.root, self.atom.workarea)
             if workarea:
-                wa_x, wa_y, wa_w, wa_h = workarea[0:4]
+                _, wa_y, _, wa_h = workarea[0:4]
             else:
-                wa_x, wa_y, wa_w, wa_h = 0, 0, self.screenWidth, self.screenHeight
+                wa_y, wa_h = 0, self.screenHeight
 
             # Update dimensions used for zone calculations
             self.dim = ScreenDimensions(

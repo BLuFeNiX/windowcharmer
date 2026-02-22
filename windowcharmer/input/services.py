@@ -49,7 +49,7 @@ class InputServices:
                 if self._stop_event.is_set():
                     break
                 if device.action == 'add' and device.properties.get('DEVNAME', '').startswith('/dev/input/event'):
-                    logger.info(f"Input device added, triggering rebind...")
+                    logger.info("Input device added, triggering rebind...")
                     self.on_rebind()
 
         t = threading.Thread(target=monitor_loop, daemon=True)
