@@ -24,7 +24,8 @@ class KeyGrabber:
         keysym = XK.string_to_keysym(key_name)
         if keysym == 0:
             return 0
-        return self.dpy.keysym_to_keycode(keysym)
+        code = self.dpy.keysym_to_keycode(keysym)
+        return int(code)
 
     def grab_keys(self) -> None:
         root = self.dpy.screen().root

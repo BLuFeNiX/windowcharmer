@@ -11,7 +11,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 def get_keycode(dpy: Display, keystring: str) -> int:
-    return dpy.keysym_to_keycode(XK.string_to_keysym(keystring))
+    code = dpy.keysym_to_keycode(XK.string_to_keysym(keystring))
+    return int(code)
 
 class KeyMonitor:
     def __init__(self, dpy: Display, callback: Callable[[Any], None]) -> None:
