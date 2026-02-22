@@ -155,36 +155,7 @@ class WindowCharmerApp:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
-    parser = argparse.ArgumentParser()
-    # Create a mutually exclusive group but make it optional so we can check daemonize flag
-    # However, original logic was: required=True group for (action OR daemonize).
-    
-    # Let's fix the argument parsing logic to be more standard while preserving behavior
-    # We want: either "action" (pos) OR "-d" (flag).
-    
-    # Actually, argparse handles mutually exclusive groups well.
-    # We can keep the existing structure if we want, or adjust.
-    # The existing structure:
-    # group = parser.add_mutually_exclusive_group(required=True)
-    # group.add_argument("action", ...)  <-- This consumes a positional arg
-    # group.add_argument("-d", ...)      <-- This is a flag
-    
-    # This works: `windowcharmer left` OR `windowcharmer -d`
-    # But `windowcharmer left -d` fails (good).
-    # `windowcharmer` fails (good).
-    
-    # We need to recreate the group logic exactly as it was or better.
-    
-    parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("action", nargs='?', help="Action to perform", 
-        choices=[
-            'left', 'center', 'right', 'top-left', 'bottom-left',
-            'top-right', 'bottom-right', 'top-center', 'bottom-center',
-            'max', 'restore', 'bigger', 'smaller',
-        ]
-    )
-    group.add_argument("-d", "--daemonize", action="store_true", help="Run as a daemon")
+    parser = argparse.ArgumentParser(description="WindowCharmer Daemon")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     
     args = parser.parse_args()
@@ -194,15 +165,7 @@ def main() -> None:
         logging.getLogger('windowcharmer').setLevel(logging.DEBUG)
 
     app = WindowCharmerApp(debug=args.debug)
-
-    if args.daemonize:
-        app.run_daemon()
-    else:
-        # action is guaranteed to be not None because group is required 
-        # AND daemonize is False (so action must be present)
-        # Type checker might complain though since nargs='?'.
-        if args.action:
-            app.do_action(args.action)
+    app.run_daemon()
 
 if __name__ == "__main__":
     main()
