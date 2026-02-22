@@ -29,7 +29,7 @@ class WindowManager:
         self.screenHeight: int = screen.height_in_pixels
         
         self.active_desktop: int = 0
-        self.config: Config | None = None
+        self.config: Config = Config(self.screenWidth)
         self.dim: ScreenDimensions | None = None
 
     def _update_state(self) -> None:
@@ -40,8 +40,9 @@ class WindowManager:
         try:
             self.active_desktop = self.get_active_desktop()
             
-            # Re-read config which might have changed (e.g. ratio index)
-            self.config = Config(self.screenWidth, self.active_desktop)
+            # Update config state instead of recreating
+            self.config.update_screen_width(self.screenWidth)
+            self.config.set_active_desktop(self.active_desktop)
             
             # Get the desktop workarea [x, y, width, height]
             workarea = get_property_value(self.root, self.atom.workarea)
