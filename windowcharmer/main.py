@@ -157,8 +157,22 @@ def main() -> None:
     
     parser = argparse.ArgumentParser(description="WindowCharmer Daemon")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--fix-keymap", action="store_true", help="Fix the keyboard mapping for Super_L and Hyper_L and exit")
     
     args = parser.parse_args()
+
+    if args.fix_keymap:
+        from Xlib import XK, display
+        dpy = display.Display()
+        def change_keyboard_mapping(d: display.Display, keycode: int, new_keysym: int) -> None:
+            keysyms = [(new_keysym,)]
+            d.change_keyboard_mapping(keycode, keysyms)
+            d.flush()
+        
+        change_keyboard_mapping(dpy, 133, XK.string_to_keysym('Super_L'))
+        change_keyboard_mapping(dpy, 207, XK.string_to_keysym('Hyper_L'))
+        print("Keyboard mapping fixed.")
+        sys.exit(0)
 
     if args.debug:
         logger.setLevel(logging.DEBUG)
