@@ -44,8 +44,8 @@ class KeyBindings:
         bindings = KeyBindings.get_defaults()
         
         # Determine config path
-        config_dir = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
-        config_file = Path(config_dir) / 'windowcharmer' / 'config.toml'
+        config_dir = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config'))
+        config_file = config_dir / 'windowcharmer' / 'config.toml'
 
         if not config_file.exists():
             return bindings
