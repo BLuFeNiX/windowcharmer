@@ -9,6 +9,7 @@ import logging
 
 from .config import Config, ScreenDimensions
 from .x11_utils import AtomCache, get_property_value
+from .tiling.zones import determine_tile_zone
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class WindowManager:
             # Re-read config which might have changed (e.g. ratio index)
             self.config = Config(self.screenWidth, self.active_desktop)
             
-            # Get the desktop workarea [x, y, width, height]
+            # Get the desktop workarea [x, y, width, height
             workarea = get_property_value(self.root, self.atom.workarea)
             if workarea:
                 wa_x, wa_y, wa_w, wa_h = workarea[0:4]
@@ -211,7 +212,7 @@ class WindowManager:
         val = get_property_value(self.root, self.atom.current_desktop)
         return val[0] if val else 0
 
-    def get_gtk_frame_extents(self, window: Window) -> dict[str, int] | None:        
+    def get_gtk_frame_extents(self, window: Window) -> dict[str, int] | None:
         extents = get_property_value(window, self.atom.gtk_extents)
         if extents:
             return {'left': extents[0], 'right': extents[1], 'top': extents[2], 'bottom': extents[3]}
@@ -252,7 +253,14 @@ class WindowManager:
         window_zones = []
         for win in self.list_windows():
             if self.get_window_desktop(win) == self.active_desktop:
-                window_zones.append((win, self.determine_tile_zone(win)))
+                window_zones.append((
+                    win,
+                    determine_tile_zone(
+                        win,
+                        self.dim,
+                        self.is_window_maximized_vertically(win)
+                    )
+                ))
 
         # Update config and recalculated dimensions
         if self.config:
@@ -268,42 +276,4 @@ class WindowManager:
             method = getattr(self, method_name, None)
             if method:
                 method(win)
-
-    def determine_tile_zone(self, window: Window, deviation: int = 128) -> str:
-        """
-        Heuristically determines which tiling zone a window is currently in
-        based on its position and dimensions.
-        """
-        x, y = self.get_window_position(window)
-        geom = window.get_geometry()
-        w, h = geom.width, geom.height
-
-        def within(val: int, target: int, dev: int = deviation) -> bool:
-            return target - dev <= val <= target + dev
-
-        v_pos = 'unknown'
-        if self.dim:
-             if self.is_window_maximized_vertically(window) or within(h, self.dim.h_full):
-                 v_pos = 'full'
-             elif within(h, self.dim.h_half):
-                 if within(y, self.dim.y_top): v_pos = 'top'
-                 elif within(y, self.dim.y_bottom): v_pos = 'bottom'
-
-        h_pos = 'unknown'
-        if self.dim:
-             if within(w, self.dim.w_side):
-                 if within(x, self.dim.x_left): h_pos = 'left'
-                 elif within(x, self.dim.x_right): h_pos = 'right'
-                 elif within(x, self.dim.x_center): h_pos = 'center'
-             elif within(w, self.dim.w_center) and within(x, self.dim.x_center):
-                 h_pos = 'center'
-
-        return f"{v_pos}-{h_pos}".replace("full-", "")
-
-    def get_window_position(self, window: Window) -> tuple[int, int]:
-        """Returns the (x, y) coordinates of the window relative to the root."""
-        # translate_coords expects: src_window.translate_coords(dest_window_id, src_x, src_y)
-        # types-python-xlib might expect an int (XID) for the destination window argument.
-        coords = window.translate_coords(self.root.id, 0, 0)
-        return (abs(coords.x), abs(coords.y)) if coords else (0, 0)
 
