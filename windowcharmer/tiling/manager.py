@@ -73,17 +73,13 @@ class WindowManager:
                 
                 win = self.get_active_window()
                 
-                if action == TileAction.BIGGER:
-                    self.resize_all_windows(1)
-                elif action == TileAction.SMALLER:
-                    self.resize_all_windows(-1)
-                elif win:
-                    method_name = f"action_{action.replace('-', '_')}"
-                    method = getattr(self, method_name, None)
-                    if method:
-                        method(win)
-                    else:
-                        logger.warning(f"Unknown action: {action}")
+                match action:
+                    case TileAction.BIGGER:
+                        self.resize_all_windows(1)
+                    case TileAction.SMALLER:
+                        self.resize_all_windows(-1)
+                    case _ if win:
+                        self._apply_tile_action(action, win)
                 
                 self.d.flush()
             except Exception as e:
@@ -92,6 +88,33 @@ class WindowManager:
             finally:
                 self.d.ungrab_server()
                 self.d.flush()
+
+    def _apply_tile_action(self, action: TileAction, win: Window) -> None:
+        match action:
+            case TileAction.LEFT:
+                self.action_left(win)
+            case TileAction.RIGHT:
+                self.action_right(win)
+            case TileAction.CENTER:
+                self.action_center(win)
+            case TileAction.MAX:
+                self.action_max(win)
+            case TileAction.RESTORE:
+                self.action_restore(win)
+            case TileAction.TOP_LEFT:
+                self.action_top_left(win)
+            case TileAction.TOP_RIGHT:
+                self.action_top_right(win)
+            case TileAction.TOP_CENTER:
+                self.action_top_center(win)
+            case TileAction.BOTTOM_LEFT:
+                self.action_bottom_left(win)
+            case TileAction.BOTTOM_RIGHT:
+                self.action_bottom_right(win)
+            case TileAction.BOTTOM_CENTER:
+                self.action_bottom_center(win)
+            case _:
+                logger.warning(f"Unknown action: {action}")
 
     # --- Actions ---
 
@@ -263,8 +286,7 @@ class WindowManager:
         for win, zone in window_zones:
             if self.config.ratio_idx == 0:
                 zone = zone.replace("center", "left")
-            
-            method_name = f"action_{zone.replace('-', '_')}"
-            method = getattr(self, method_name, None)
-            if method:
-                method(win)
+            try:
+                self._apply_tile_action(TileAction(zone), win)
+            except ValueError:
+                logger.warning(f"Unknown zone: {zone}")
