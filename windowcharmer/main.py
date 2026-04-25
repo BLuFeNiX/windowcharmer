@@ -1,5 +1,6 @@
 import threading
 import sys
+import signal
 import argparse
 import logging
 import functools
@@ -168,6 +169,9 @@ def main() -> None:
 
     if args.debug:
         logging.getLogger('windowcharmer').setLevel(logging.DEBUG)
+
+    # SIGTERM raises SystemExit, which is caught by the existing handler in run_daemon.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
     app = WindowCharmerApp(debug=args.debug)
     app.run_daemon()
