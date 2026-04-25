@@ -58,10 +58,9 @@ class InputServices:
 
     def _start_key_monitor(self) -> None:
         def monitor_wrapper() -> None:
-             # KeyMonitor needs its own display connection
-             monitor_dpy: Display = DisplayPool.get_display("monitor")
-             monitor = KeyMonitor(monitor_dpy, self.on_key_event)
-             monitor.start()
+            monitor_dpy: Display = DisplayPool.get_display("monitor")
+            monitor = KeyMonitor(monitor_dpy, self.on_key_event)
+            monitor.start()
 
         t = threading.Thread(target=monitor_wrapper, daemon=True)
         t.start()

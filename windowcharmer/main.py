@@ -71,19 +71,19 @@ class WindowCharmerApp:
         Handles updating keycode cache and detecting Super key passthrough.
         """
         if not self.mapper:
-             return
+            return
 
         # 1. Handle Mapping Changes
         if event.type == X.MappingNotify:
             self.mapper.refresh_keycodes()
             if self.passthrough_tracker:
-                 self.passthrough_tracker.update_keycode(self.mapper.super_l_keycode)
+                self.passthrough_tracker.update_keycode(self.mapper.super_l_keycode)
             return
 
         # 2. Handle Key Press/Release for Super/Hyper Passthrough Logic
         if event.type == X.KeyPress or event.type == X.KeyRelease:
             if self.passthrough_tracker:
-                 self.passthrough_tracker.handle_event(event)
+                self.passthrough_tracker.handle_event(event)
 
     def _schedule_rebind(self) -> None:
         """Debounce the rebind call for udev events."""
@@ -92,8 +92,8 @@ class WindowCharmerApp:
                 self.debounce_timer.cancel()
             
             if self.mapper:
-                 self.debounce_timer = threading.Timer(0.25, self.mapper.apply_super_hyper_swap)
-                 self.debounce_timer.start()
+                self.debounce_timer = threading.Timer(0.25, self.mapper.apply_super_hyper_swap)
+                self.debounce_timer.start()
 
     def run_daemon(self) -> None:
         logger.info("Starting WindowCharmer Daemon...")
