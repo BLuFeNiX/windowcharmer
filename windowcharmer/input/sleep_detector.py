@@ -1,6 +1,6 @@
 import time
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,7 @@ class WakeFromSleepDetector:
                 # larger than the wait time, it means we probably slept.
                 if (now - self.last_check) > (self.wait_time + self.threshold_time):
                     logger.info(f"System wake detected (time jump: {now - self.last_check:.2f}s)")
-                    if self.callback is not None:
-                        self.callback()
+                    self.callback()
                 self.last_check = now
         except (KeyboardInterrupt, SystemExit):
             logger.info('Exiting wake detection loop...')
