@@ -35,6 +35,8 @@ class KeyGrabber:
             if keycode:
                 self.keycode_map[keycode] = action
                 self._grab_key_ignore_locks(root, keycode)
+            else:
+                logger.warning(f"Unknown key name {key_name!r} — skipping grab")
 
     def _grab_key_ignore_locks(self, window: Window, keycode: int) -> None:
         for mod in self.IGNORED_MODIFIERS:
