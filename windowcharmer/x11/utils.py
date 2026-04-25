@@ -1,8 +1,11 @@
+import logging
 from collections.abc import Sequence
 from typing import cast
 from Xlib import X
 from Xlib.display import Display
 from Xlib.xobject.drawable import Window
+
+logger = logging.getLogger(__name__)
 
 class AtomCache:
     def __init__(self, dpy: Display) -> None:
@@ -39,6 +42,6 @@ def get_property_value(window: Window, atom: int, property_type: int = X.AnyProp
         prop = window.get_full_property(atom, property_type)
         if prop and prop.value is not None:
             return cast(Sequence[int], prop.value)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"get_property_value failed: {e}")
     return None
