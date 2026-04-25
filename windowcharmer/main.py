@@ -162,10 +162,19 @@ def main() -> None:
             keysyms = [(new_keysym,)]
             d.change_keyboard_mapping(keycode, keysyms)
             d.flush()
-        
-        # Keycodes 133 and 207 are specific to the author's keyboard layout.
-        change_keyboard_mapping(dpy, 133, XK.string_to_keysym('Super_L'))
-        change_keyboard_mapping(dpy, 207, XK.string_to_keysym('Hyper_L'))
+
+        super_l_ks = XK.string_to_keysym('Super_L')
+        hyper_l_ks = XK.string_to_keysym('Hyper_L')
+        kc_a = dpy.keysym_to_keycode(super_l_ks)
+        kc_b = dpy.keysym_to_keycode(hyper_l_ks)
+        if not kc_a or not kc_b:
+            print("Super_L or Hyper_L not found in keyboard mapping.")
+            sys.exit(1)
+        # Restore canonical: lower keycode → Super_L, higher → Hyper_L.
+        # Works in both canonical and swapped states without hardcoded keycodes.
+        lo, hi = min(kc_a, kc_b), max(kc_a, kc_b)
+        change_keyboard_mapping(dpy, lo, super_l_ks)
+        change_keyboard_mapping(dpy, hi, hyper_l_ks)
         print("Keyboard mapping fixed.")
         sys.exit(0)
 
