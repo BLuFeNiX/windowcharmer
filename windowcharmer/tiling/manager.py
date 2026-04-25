@@ -205,6 +205,7 @@ class WindowManager:
         client_w = width - d_l - d_r
         client_h = height - d_t - d_b
         
+        # Maximized windows ignore configure() calls, so we must clear the flag first.
         if self.is_window_maximized_vertically(window):
             self.action_restore(window)
 
