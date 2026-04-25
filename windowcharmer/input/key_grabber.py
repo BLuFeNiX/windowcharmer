@@ -1,9 +1,10 @@
+import sys
+import traceback
+import logging
 from collections.abc import Callable
 from Xlib import X, XK
 from Xlib.display import Display
 from Xlib.xobject.drawable import Window
-import traceback
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,7 @@ class KeyGrabber:
         except Exception as e:
             logger.error(f"KeyGrabber error: {e}")
             logger.debug(traceback.format_exc())
+            sys.exit(1)
 
     def stop(self) -> None:
         # Clean up grabs if necessary
