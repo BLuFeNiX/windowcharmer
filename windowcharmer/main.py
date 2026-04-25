@@ -2,6 +2,7 @@ import threading
 import sys
 import argparse
 import logging
+import functools
 from typing import Callable, Any
 from Xlib import X
 
@@ -40,15 +41,7 @@ class WindowCharmerApp:
         self.wm.execute_action(action)
 
     def _setup_key_bindings(self) -> dict[str, Callable[[], None]]:
-        """Define the hotkey -> action mapping."""
-        # Map TileAction enum values to callables
-        bindings: dict[str, Callable[[], None]] = {}
-        for key, action in self.key_bindings.items():
-            # We use a default argument (a=action) to capture the value in the closure
-            def make_handler(a: TileAction = action) -> Callable[[], None]:
-                return lambda: self.do_action(a)
-            bindings[key] = make_handler()
-        return bindings
+        return {key: functools.partial(self.do_action, action) for key, action in self.key_bindings.items()}
 
     def _handle_rebind_request(self, event: Any | None = None) -> None:
         """
