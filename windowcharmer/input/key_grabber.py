@@ -50,8 +50,8 @@ class KeyGrabber:
         for mod in self.IGNORED_MODIFIERS:
             try:
                 window.ungrab_key(keycode, self.modifier | mod)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to ungrab keycode {keycode} mod {mod}: {e}")
 
     def start(self) -> None:
         """Main event loop for grabbing and dispatching keys."""
