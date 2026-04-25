@@ -44,9 +44,7 @@ class Config:
         """Change the layout ratio for the active desktop."""
         current_idx = self._desktop_ratios.get(self.active_desktop, 2)
         
-        new_idx = (current_idx + len(self.supported_ratios) + step) % len(
-            self.supported_ratios
-        )
+        new_idx = (current_idx + step) % len(self.supported_ratios)
         
         self._desktop_ratios[self.active_desktop] = new_idx
         self.reload()
