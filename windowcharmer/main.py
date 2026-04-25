@@ -163,6 +163,7 @@ def main() -> None:
             d.change_keyboard_mapping(keycode, keysyms)
             d.flush()
         
+        # Keycodes 133 and 207 are specific to the author's keyboard layout.
         change_keyboard_mapping(dpy, 133, XK.string_to_keysym('Super_L'))
         change_keyboard_mapping(dpy, 207, XK.string_to_keysym('Hyper_L'))
         print("Keyboard mapping fixed.")
