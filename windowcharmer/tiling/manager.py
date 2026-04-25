@@ -5,6 +5,7 @@ from typing import NamedTuple
 
 from Xlib import X, protocol
 from Xlib.display import Display
+from Xlib.error import ConnectionClosedError, DisplayConnectionError
 from Xlib.xobject.drawable import Window
 
 from ..config import Config, ScreenDimensions, TileAction
@@ -112,6 +113,8 @@ class WindowManager:
                 finally:
                     self.d.ungrab_server()
                     self.d.flush()
+            except (ConnectionClosedError, DisplayConnectionError):
+                raise  # unrecoverable; propagate so the supervisor can restart
             except Exception as e:
                 logger.error(f"Error executing action {action}: {e}")
                 logger.debug("", exc_info=True)
