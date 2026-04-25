@@ -136,6 +136,9 @@ class WindowCharmerApp:
             logger.error(f"Error in main loop: {e}")
             logger.debug(traceback.format_exc())
         finally:
+            with self.timer_lock:
+                if self.debounce_timer:
+                    self.debounce_timer.cancel()
             if self.input_services:
                 self.input_services.stop_all()
             if self.mapper:
