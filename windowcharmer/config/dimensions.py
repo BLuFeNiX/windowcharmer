@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-@dataclass(frozen=True)
+@dataclass
 class ScreenDimensions:
     screen_width: int
     wa_y: int
@@ -21,20 +21,19 @@ class ScreenDimensions:
     w_center: int = field(init=False)
 
     def __post_init__(self) -> None:
-        # Calculate derived values. Since the class is frozen, we use object.__setattr__
         side_width = (self.screen_width - self.center_width) // 2
-        object.__setattr__(self, 'side_width', side_width)
-        
+        self.side_width = side_width
+
         h_half = self.wa_h // 2
-        object.__setattr__(self, 'h_half', h_half)
-        object.__setattr__(self, 'h_full', self.wa_h)
-        
-        object.__setattr__(self, 'x_left', 0)
-        object.__setattr__(self, 'x_right', self.screen_width - side_width)
-        object.__setattr__(self, 'x_center', side_width)
-        
-        object.__setattr__(self, 'y_top', self.wa_y)
-        object.__setattr__(self, 'y_bottom', self.wa_y + h_half)
-        
-        object.__setattr__(self, 'w_side', side_width)
-        object.__setattr__(self, 'w_center', self.center_width)
+        self.h_half = h_half
+        self.h_full = self.wa_h
+
+        self.x_left = 0
+        self.x_right = self.screen_width - side_width
+        self.x_center = side_width
+
+        self.y_top = self.wa_y
+        self.y_bottom = self.wa_y + h_half
+
+        self.w_side = side_width
+        self.w_center = self.center_width
