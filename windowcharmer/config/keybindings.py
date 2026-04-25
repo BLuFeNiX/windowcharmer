@@ -57,7 +57,7 @@ def load_keybindings() -> dict[str, TileAction]:
                 except ValueError:
                     logger.warning(f"Invalid action '{action_str}' in config.toml for key '{key}'. Ignoring.")
 
-    except Exception as e:
+    except (OSError, tomllib.TOMLDecodeError) as e:
         logger.error(f"Failed to load config file {config_file}: {e}")
 
     return bindings
