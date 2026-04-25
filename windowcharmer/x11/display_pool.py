@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 class DisplayPool:
     """
-    Manages centralized Display connections.
-    Xlib requires a separate Display connection per thread for safe concurrent access.
+    Manages named Display connections. Each name must only ever be accessed from one
+    thread; the pool provides role-based, not thread-based, separation.
     """
     _displays: dict[str, Display] = {}
     _lock = threading.Lock()
