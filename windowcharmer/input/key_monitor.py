@@ -62,9 +62,21 @@ class KeyMonitor:
 
                 self.callback(event)
 
-        self.dpy.record_enable_context(self.ctx, inner_callback)
-        self.dpy.record_free_context(self.ctx)
+        try:
+            self.dpy.record_enable_context(self.ctx, inner_callback)
+        finally:
+            self.dpy.record_free_context(self.ctx)
 
     def stop(self) -> None:
-        if self.ctx is not None:
-            self.dpy.record_disable_context(self.ctx)
+        if self.ctx is None:
+            return
+        # record_disable_context must be called from a *different* Display connection
+        # than record_enable_context — python-xlib is not thread-safe on a single Display.
+        stop_dpy = Display()
+        try:
+            stop_dpy.record_disable_context(self.ctx)
+            stop_dpy.flush()
+        except Exception as e:
+            logger.debug(f"KeyMonitor.stop: failed to disable record context: {e}")
+        finally:
+            stop_dpy.close()
