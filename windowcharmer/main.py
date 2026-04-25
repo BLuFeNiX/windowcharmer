@@ -101,18 +101,13 @@ class WindowCharmerApp:
         # Initialize daemon-specific components
         from .x11.display_pool import DisplayPool
         self.grab_dpy = DisplayPool.get_display("grabber")
-        self.mapper = KeyboardMapper()
-        
+        mapper = self.mapper = KeyboardMapper()
+
         self.passthrough_tracker = SuperPassthroughTracker(
-            self.mapper.super_l_keycode,
-            lambda: self.mapper.simulate_hyper_press() if self.mapper else None
+            mapper.super_l_keycode,
+            mapper.simulate_hyper_press
         )
-        
-        # Note: on_key_event_callback signature mismatch in InputServices vs callback
-        # InputServices expects: Callable[[Any], None]
-        # _monitor_callback signature: (event: Any) -> None
-        # So we can pass it directly.
-        
+
         self.input_services = InputServices(
             on_rebind_callback=self._handle_rebind_request,
             on_key_event_callback=self._monitor_callback
