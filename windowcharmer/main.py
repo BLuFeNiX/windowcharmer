@@ -154,26 +154,26 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.fix_keymap:
-        from Xlib import XK, display
-        dpy = display.Display()
-        def change_keyboard_mapping(d: display.Display, keycode: int, new_keysym: int) -> None:
-            keysyms = [(new_keysym,)]
-            d.change_keyboard_mapping(keycode, keysyms)
-            d.flush()
-
-        super_l_ks = XK.string_to_keysym('Super_L')
-        hyper_l_ks = XK.string_to_keysym('Hyper_L')
-        kc_a = dpy.keysym_to_keycode(super_l_ks)
-        kc_b = dpy.keysym_to_keycode(hyper_l_ks)
-        if not kc_a or not kc_b:
-            print("Super_L or Hyper_L not found in keyboard mapping.")
-            sys.exit(1)
-        # Restore canonical: lower keycode → Super_L, higher → Hyper_L.
-        # Works in both canonical and swapped states without hardcoded keycodes.
-        lo, hi = min(kc_a, kc_b), max(kc_a, kc_b)
-        change_keyboard_mapping(dpy, lo, super_l_ks)
-        change_keyboard_mapping(dpy, hi, hyper_l_ks)
-        print("Keyboard mapping fixed.")
+        from Xlib import XK, display as xdisplay
+        dpy = xdisplay.Display()
+        try:
+            super_l_ks = XK.string_to_keysym('Super_L')
+            hyper_l_ks = XK.string_to_keysym('Hyper_L')
+            kc_a = dpy.keysym_to_keycode(super_l_ks)
+            kc_b = dpy.keysym_to_keycode(hyper_l_ks)
+            if not kc_a or not kc_b:
+                print("Super_L or Hyper_L not found in keyboard mapping.", file=sys.stderr)
+                sys.exit(1)
+            # Restore canonical: lower keycode → Super_L, higher → Hyper_L.
+            # Works in both canonical and swapped states without hardcoded keycodes.
+            lo, hi = min(kc_a, kc_b), max(kc_a, kc_b)
+            dpy.change_keyboard_mapping(lo, [(super_l_ks,)])
+            dpy.flush()
+            dpy.change_keyboard_mapping(hi, [(hyper_l_ks,)])
+            dpy.flush()
+            print("Keyboard mapping fixed.")
+        finally:
+            dpy.close()
         sys.exit(0)
 
     if args.debug:
