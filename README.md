@@ -1,6 +1,8 @@
 # WindowCharmer
 
-WindowCharmer is a three-column window tiler for ultra-wide monitors, designed to be compatible with the Cinnamon desktop environment. It can likely work on any X11 environment, but this has not been tested and may need tweaking.
+WindowCharmer is a three-column window tiler for ultra-wide monitors, designed for X11 desktop environments. Actively tested on Cinnamon (Muffin); should work on GNOME (Mutter) and KDE (KWin) with no changes.
+
+> **X11 only.** Wayland does not support global key grabs or XTest — WindowCharmer cannot run on Wayland.
 
 ## Installation
 
@@ -20,13 +22,15 @@ source .venv/bin/activate
 windowcharmer
 ```
 
-You will likely want to run this automatically on login, which is an exercise left for the user, but [start_daemon.sh](start_daemon.sh) will work for most users by simply adding that file to your startup programs list.
+For automatic startup on login, add `start_daemon.sh` to your desktop environment's autostart list, or use the [systemd unit](#systemd-user-service).
 
-**Note: Removing conflicting keybindings in your desktop environment (such as window snapping controls) should NOT be necessary. They will be overridden while the daemon is running.**
+**Note: You do not need to remove conflicting DE keybindings.** WindowCharmer grabs keys exclusively while running, so its bindings take precedence.
 
-#### Default Keybindings
+---
 
-**The activation key is Super_L** (the left "Windows" key). Default bindings:
+## Default Keybindings
+
+**The activation key is Super_L** (the left "Windows" key).
 
 | Key | Action |
 |-----|--------|
@@ -35,40 +39,113 @@ You will likely want to run this automatically on login, which is an exercise le
 | `Left` | `left` — left column |
 | `Right` | `right` — right column |
 | `space` | `restore` — unmaximize |
-| `Numpad 7` (`KP_Home`) | `top-left` |
-| `Numpad 8` (`KP_Up`) | `top-center` |
-| `Numpad 9` (`KP_Page_Up`) | `top-right` |
-| `Numpad 4` (`KP_Left`) | `left` |
-| `Numpad 5` (`KP_Begin`) | `center` |
-| `Numpad 6` (`KP_Right`) | `right` |
-| `Numpad 1` (`KP_End`) | `bottom-left` |
-| `Numpad 2` (`KP_Down`) | `bottom-center` |
-| `Numpad 3` (`KP_Page_Down`) | `bottom-right` |
-| `Numpad 0` (`KP_Insert`) | `restore` |
-| `Numpad +` (`KP_Add`) | `bigger` — widen center column |
-| `Numpad -` (`KP_Subtract`) | `smaller` — narrow center column |
+| Numpad `7` (`KP_Home`) | `top-left` |
+| Numpad `8` (`KP_Up`) | `top-center` |
+| Numpad `9` (`KP_Page_Up`) | `top-right` |
+| Numpad `4` (`KP_Left`) | `left` |
+| Numpad `5` (`KP_Begin`) | `center` |
+| Numpad `6` (`KP_Right`) | `right` |
+| Numpad `1` (`KP_End`) | `bottom-left` |
+| Numpad `2` (`KP_Down`) | `bottom-center` |
+| Numpad `3` (`KP_Page_Down`) | `bottom-right` |
+| Numpad `0` (`KP_Insert`) | `restore` |
+| Numpad `+` (`KP_Add`) | `bigger` — widen center column |
+| Numpad `-` (`KP_Subtract`) | `smaller` — narrow center column |
 | `BackSpace` | `exit` — stop the daemon |
 
-For example, to tile the window to the left, press `Super` and the `left arrow` key. To kill the daemon, press `Super+backspace`.
+---
 
-#### Configuration
+## Configuration
 
 Keybindings can be overridden in `~/.config/windowcharmer/config.toml` (respects `$XDG_CONFIG_HOME`):
 
 ```toml
 [keybindings]
-# Map Super+F1 to center the window
+# Super+F1 → center window
 F1 = "center"
-# Map Super+F2 to tile left
+# Super+F2 → tile left
 F2 = "left"
 ```
 
-Supported action strings (all values of the `TileAction` enum):
+Supported action strings:
 `left`, `right`, `center`, `top-left`, `bottom-left`, `top-right`, `bottom-right`,
 `top-center`, `bottom-center`, `max`, `restore`, `bigger`, `smaller`, `exit`
 
-Key names follow the X11 keysym naming convention (e.g. `Up`, `KP_Home`, `F1`, `space`).
+Key names follow X11 keysym convention (e.g. `Up`, `KP_Home`, `F1`, `space`). Invalid action strings or unknown key names are logged as warnings and skipped — the daemon keeps running with the remaining bindings.
+
+---
+
+## Keymap Notes
+
+WindowCharmer remaps your keyboard while the daemon runs: it **swaps Super_L and Hyper_L** at the X11 level. This is how it intercepts `Super+<key>` without interfering with the desktop environment's own Super key handling.
+
+- When you tap Super alone (no tiling key), WindowCharmer forwards a synthetic `Hyper_L` press, which the DE interprets as opening the application menu — so bare-Super still opens your menu.
+- On daemon exit the original mapping is restored automatically.
+- If the daemon crashes mid-swap, run `windowcharmer --fix-keymap` to restore the canonical mapping without starting the daemon.
+
+### If your keymap gets stuck
+
+```sh
+windowcharmer --fix-keymap
+```
+
+This reads the current Super_L/Hyper_L keycodes, assigns them back to their canonical keysyms, and exits. It is safe to run at any time.
+
+---
+
+## Systemd User Service
+
+Copy the unit file and enable it:
+
+```sh
+mkdir -p ~/.config/systemd/user
+cp contrib/windowcharmer.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now windowcharmer
+```
+
+View logs:
+
+```sh
+journalctl --user -u windowcharmer -f
+```
+
+Enable debug logging:
+
+```sh
+systemctl --user edit windowcharmer
+# Add:
+# [Service]
+# Environment=WINDOWCHARMER_DEBUG=1
+```
+
+---
+
+## Troubleshooting
+
+**The daemon won't start / exits immediately**
+
+- Run `windowcharmer` from a terminal to see error output.
+- Check `journalctl --user -u windowcharmer` if using systemd.
+- Ensure no other application has grabbed the same keys (another tiling daemon, DE snapping, etc.).
+
+**Super key stops opening the application menu**
+
+The keymap swap is likely stuck. Run `windowcharmer --fix-keymap` and then restart the daemon.
+
+**Tiling doesn't snap to the right columns**
+
+WindowCharmer reads `_NET_WORKAREA` to detect panel height. If your panel manager doesn't set this property, tile positions may be off. Check with `xprop -root _NET_WORKAREA`.
+
+**The daemon starts but does nothing when I press Super**
+
+Another client may have grabbed the key first. Look for competing grabs:
+```sh
+xev | grep -i key
+```
+
+---
 
 ## Support
 
-For issues, questions, or contributions, please refer to the [issue tracker](https://github.com/BLuFeNiX/windowcharmer/issues).
+For issues, questions, or contributions, see the [issue tracker](https://github.com/BLuFeNiX/windowcharmer/issues) or read [CONTRIBUTING.md](CONTRIBUTING.md).
