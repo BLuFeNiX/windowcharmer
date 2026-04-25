@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from typing import Any
 from Xlib import X
 
@@ -11,7 +12,7 @@ class SuperPassthroughTracker:
     it simulates a Hyper_L press (which the DE usually interprets as opening the menu).
     If another key is pressed while Super is down, it suppresses the menu opening.
     """
-    def __init__(self, super_keycode: int, on_passthrough: Any) -> None:
+    def __init__(self, super_keycode: int, on_passthrough: Callable[[], None]) -> None:
         self.super_keycode = super_keycode
         self.on_passthrough = on_passthrough
         self.super_pressed: bool = False

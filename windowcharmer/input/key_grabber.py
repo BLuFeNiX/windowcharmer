@@ -1,6 +1,7 @@
-from typing import Callable, Any
+from collections.abc import Callable
 from Xlib import X, XK
 from Xlib.display import Display
+from Xlib.xobject.drawable import Window
 import traceback
 import logging
 
@@ -11,11 +12,11 @@ class KeyGrabber:
     # Minimal set: None, Lock, Mod2, Lock|Mod2
     IGNORED_MODIFIERS: list[int] = [0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask]
 
-    def __init__(self, dpy: Display, key_combinations: dict[str, Any], modifier: int = 0, on_mapping_notify: Callable[[], None] | None = None) -> None:
+    def __init__(self, dpy: Display, key_combinations: dict[str, Callable[[], None]], modifier: int = 0, on_mapping_notify: Callable[[], None] | None = None) -> None:
         self.dpy = dpy
         self.key_combinations = key_combinations
         self.modifier = modifier
-        self.keycode_map: dict[int, Any] = {}
+        self.keycode_map: dict[int, Callable[[], None]] = {}
         self.on_mapping_notify = on_mapping_notify
 
     def _get_keycode(self, key_name: str) -> int:
@@ -34,7 +35,7 @@ class KeyGrabber:
                 self.keycode_map[keycode] = action
                 self._grab_key_ignore_locks(root, keycode)
 
-    def _grab_key_ignore_locks(self, window: Any, keycode: int) -> None:
+    def _grab_key_ignore_locks(self, window: Window, keycode: int) -> None:
         for mod in self.IGNORED_MODIFIERS:
             # keycode, modifiers, owner_events, pointer_mode, keyboard_mode
             window.grab_key(keycode, self.modifier | mod, True, X.GrabModeAsync, X.GrabModeAsync)
@@ -45,7 +46,7 @@ class KeyGrabber:
             self._ungrab_key_ignore_locks(root, keycode)
         self.keycode_map.clear()
 
-    def _ungrab_key_ignore_locks(self, window: Any, keycode: int) -> None:
+    def _ungrab_key_ignore_locks(self, window: Window, keycode: int) -> None:
         for mod in self.IGNORED_MODIFIERS:
             try:
                 window.ungrab_key(keycode, self.modifier | mod)
@@ -65,10 +66,7 @@ class KeyGrabber:
                 if event.type == X.KeyPress:
                     keycode = event.detail
                     if keycode in self.keycode_map:
-                        callback = self.keycode_map[keycode]
-                        # Run the callback (usually triggers WindowManager action)
-                        if callback:
-                             callback()
+                        self.keycode_map[keycode]()
 
                 elif event.type == X.MappingNotify:
                     # Update Xlib's internal mapping

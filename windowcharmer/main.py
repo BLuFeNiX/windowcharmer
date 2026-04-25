@@ -3,8 +3,10 @@ import sys
 import argparse
 import logging
 import functools
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 from Xlib import X
+from Xlib.display import Display
 
 # Components
 from .tiling.manager import WindowManager
@@ -31,7 +33,7 @@ class WindowCharmerApp:
 
         # Deferred initialization for daemon components
         self.mapper: KeyboardMapper | None = None
-        self.grab_dpy: Any | None = None
+        self.grab_dpy: Display | None = None
         self.input_services: InputServices | None = None
 
     def do_action(self, action: TileAction) -> None:
