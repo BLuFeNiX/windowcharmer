@@ -1,7 +1,3 @@
-import logging
-
-logger = logging.getLogger(__name__)
-
 class Config:
     supported_ratios: list[float] = [
         0.0,       # only 2 columns
