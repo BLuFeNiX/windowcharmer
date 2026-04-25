@@ -1,5 +1,4 @@
 import time
-from threading import Thread
 import logging
 from typing import Callable
 
@@ -36,22 +35,3 @@ class WakeFromSleepDetector:
         except (KeyboardInterrupt, SystemExit):
             logger.info('Exiting wake detection loop...')
 
-# Define a callback function
-def wakeup_action() -> None:
-    logger.info("Wakeup detected!")
-
-# Usage example:
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    detector = WakeFromSleepDetector(callback=wakeup_action)
-    t = Thread(target=detector.start)
-    t.daemon = True
-    t.start()
-
-    # The main thread can perform other tasks here,
-    # or simply wait for the monitoring thread to be interrupted.
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        pass

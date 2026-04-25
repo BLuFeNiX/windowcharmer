@@ -3,8 +3,6 @@ from Xlib import X, XK
 from Xlib.ext import record
 from Xlib.display import Display
 from Xlib.protocol import rq
-import sys
-import traceback
 import logging
 
 logger = logging.getLogger(__name__)
@@ -59,31 +57,3 @@ class KeyMonitor:
 
         self.dpy.record_enable_context(ctx, inner_callback)
         self.dpy.record_free_context(ctx)
-
-
-if __name__ == "__main__":
-    # block used for standalone testing
-    logging.basicConfig(level=logging.DEBUG)
-    
-    from ..x11.display_pool import DisplayPool
-    dpy = DisplayPool.get_display("standalone_monitor")
-    super_l_keycode = get_keycode(dpy, 'Super_L')
-
-    def callback(event: Any) -> None:
-        if event.type == X.KeyPress or event.type == X.KeyRelease:
-            if event.detail == super_l_keycode:
-                if event.type == X.KeyPress:
-                    print("Super_L key pressed")                    
-                elif event.type == X.KeyRelease:
-                    print("Super_L key released")
-
-    try:
-        monitor = KeyMonitor(dpy, callback)
-        monitor.start()
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    except Exception:
-        print("Unexpected error:", sys.exc_info()[0])
-        traceback.print_exc()
-    finally:
-        dpy.flush()
