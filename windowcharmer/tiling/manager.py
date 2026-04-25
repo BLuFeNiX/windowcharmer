@@ -229,7 +229,7 @@ class WindowManager:
 
     def get_active_window(self) -> Window | None:
         val = get_property_value(self.root, self.atom.window)
-        if val and len(val) > 0:
+        if val:
             return self.d.create_resource_object('window', val[0])
         return None
 
