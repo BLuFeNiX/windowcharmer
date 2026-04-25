@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -33,4 +33,4 @@ jobs:
         run: mypy windowcharmer/
 
       - name: pytest
-        run: pytest -v
+        run: pytest -v --cov=windowcharmer --cov-fail-under=70
