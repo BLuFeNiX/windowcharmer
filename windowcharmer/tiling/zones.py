@@ -1,22 +1,32 @@
 from Xlib.xobject.drawable import Window
+
 from ..config import ScreenDimensions
 
+# Tolerate up to this many pixels of position/size drift when matching a zone.
+# 128 px covers GTK shadow offsets and minor rounding across WMs.
+_ZONE_DEVIATION = 128
+
+
 def get_window_position(window: Window) -> tuple[int, int]:
-    """Returns the (x, y) coordinates of the window relative to the root."""
-    # Use get_geometry().root to find the root window reliably
+    """Return the (x, y) position of a window relative to the root.
+
+    See docs/x11_coordinates.md for why abs() is applied to the translated coords.
+    """
     root = window.get_geometry().root
     coords = window.translate_coords(root, 0, 0)
     return (abs(coords.x), abs(coords.y)) if coords else (0, 0)
+
 
 def determine_tile_zone(
     window: Window,
     dim: ScreenDimensions | None,
     is_maximized_vertically: bool,
-    deviation: int = 128
+    deviation: int = _ZONE_DEVIATION,
 ) -> str:
-    """
-    Heuristically determines which tiling zone a window is currently in
-    based on its position and dimensions.
+    """Heuristically determine which tiling zone a window currently occupies.
+
+    Returns a zone string like ``"left"``, ``"top-right"``, or ``"unknown"``.
+    See docs/x11_coordinates.md for coordinate system notes.
     """
     if not dim:
         return "unknown"
@@ -49,4 +59,3 @@ def determine_tile_zone(
         h_pos = 'center'
 
     return f"{v_pos}-{h_pos}".replace("full-", "")
-
