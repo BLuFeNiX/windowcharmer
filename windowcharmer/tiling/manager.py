@@ -78,7 +78,7 @@ class WindowManager:
                 elif action == TileAction.SMALLER:
                     self.resize_all_windows(-1)
                 elif win:
-                    method_name = f"action_{action.value.replace('-', '_')}"
+                    method_name = f"action_{action.replace('-', '_')}"
                     method = getattr(self, method_name, None)
                     if method:
                         method(win)

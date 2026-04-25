@@ -1,6 +1,6 @@
-from enum import Enum
+from enum import StrEnum
 
-class TileAction(Enum):
+class TileAction(StrEnum):
     LEFT = "left"
     RIGHT = "right"
     CENTER = "center"
