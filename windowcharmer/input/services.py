@@ -41,13 +41,11 @@ class InputServices:
             context = pyudev.Context()
             monitor = pyudev.Monitor.from_netlink(context)
             monitor.filter_by(subsystem='input')
-            
-            # Use monitor.poll() for modern, future-proof iteration
-            # This returns a Device object directly (with .action attribute)
-            # The iterator protocol (for action, device in monitor) is deprecated.
-            for device in iter(monitor.poll, None):
-                if self._stop_event.is_set():
-                    break
+
+            while not self._stop_event.is_set():
+                device = monitor.poll(timeout=0.5)
+                if device is None:
+                    continue
                 if device.action == 'add' and device.properties.get('DEVNAME', '').startswith('/dev/input/event'):
                     logger.info("Input device added, triggering rebind...")
                     self.on_rebind()
