@@ -1,9 +1,10 @@
-import threading
-import sys
-import signal
 import argparse
-import logging
 import functools
+import logging
+import signal
+import sys
+import threading
+import traceback
 from collections.abc import Callable
 from typing import Any
 from Xlib import X
@@ -16,7 +17,6 @@ from .x11.keyboard_mapper import KeyboardMapper
 from .input.services import InputServices
 from .config import load_keybindings, TileAction
 from .input.super_passthrough import SuperPassthroughTracker
-import traceback
 
 logger = logging.getLogger(__name__)
 
