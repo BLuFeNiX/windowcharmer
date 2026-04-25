@@ -52,20 +52,15 @@ class WindowCharmerApp:
         Callback for when a rebind is requested (Sleep, Udev, X11 MappingNotify).
         Handles debouncing and filtering.
         """
-        if event:
-            if event.request == X.MappingKeyboard:
-                logger.debug("MappingNotify is for Keyboard, proceeding with check...")
-            else:
-                logger.debug(f"MappingNotify is for {event.request}, ignoring.")
-                return
-        
-        # If called without an event (e.g. from udev or sleep), debounce it
         if event is None:
             self._schedule_rebind()
-        else:
-            # If from X11 event (MappingNotify), run immediately as we are already in an event loop context
-            if self.mapper:
-                self.mapper.apply_super_hyper_swap()
+            return
+        if event.request != X.MappingKeyboard:
+            logger.debug(f"MappingNotify is for {event.request}, ignoring.")
+            return
+        logger.debug("MappingNotify is for Keyboard, proceeding with check...")
+        if self.mapper:
+            self.mapper.apply_super_hyper_swap()
 
     def _monitor_callback(self, event: Any) -> None:
         """
