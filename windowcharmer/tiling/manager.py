@@ -106,7 +106,7 @@ class WindowManager:
             self.move_and_resize(window, self.dim.x_right, self.dim.y_top, self.dim.w_side, self.dim.h_full)
 
     def action_center(self, window: Window) -> None:
-        if self.config and self.dim and self.config.center_width > 0:
+        if self.dim and self.config.center_width > 0:
             self.set_max_flags(window, 1, 0)
             self.move_and_resize(window, self.dim.x_center, self.dim.y_top, self.dim.w_center, self.dim.h_full)
 
@@ -131,12 +131,12 @@ class WindowManager:
             self.move_and_resize(window, self.dim.x_right, self.dim.y_bottom, self.dim.w_side, self.dim.h_half)
 
     def action_top_center(self, window: Window) -> None:
-        if self.config and self.dim and self.config.center_width > 0:
+        if self.dim and self.config.center_width > 0:
             self.set_max_flags(window, 0, 0)
             self.move_and_resize(window, self.dim.x_center, self.dim.y_top, self.dim.w_center, self.dim.h_half)
 
     def action_bottom_center(self, window: Window) -> None:
-        if self.config and self.dim and self.config.center_width > 0:
+        if self.dim and self.config.center_width > 0:
             self.set_max_flags(window, 0, 0)
             self.move_and_resize(window, self.dim.x_center, self.dim.y_bottom, self.dim.w_center, self.dim.h_half)
 
@@ -256,13 +256,12 @@ class WindowManager:
                 ))
 
         # Update config and recalculated dimensions
-        if self.config:
-             self.config.next_ratio(step)
+        self.config.next_ratio(step)
         self._update_state()
-        
+
         # Apply new tiling based on previous zones
         for win, zone in window_zones:
-            if self.config and self.config.ratio_idx == 0:
+            if self.config.ratio_idx == 0:
                 zone = zone.replace("center", "left")
             
             method_name = f"action_{zone.replace('-', '_')}"
