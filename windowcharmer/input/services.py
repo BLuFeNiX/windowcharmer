@@ -59,9 +59,12 @@ class InputServices:
 
     def _start_key_monitor(self) -> None:
         def monitor_wrapper() -> None:
-            monitor_dpy: Display = DisplayPool.get_display("monitor")
-            monitor = KeyMonitor(monitor_dpy, self.on_key_event)
-            monitor.start()
+            try:
+                monitor_dpy: Display = DisplayPool.get_display("monitor")
+                monitor = KeyMonitor(monitor_dpy, self.on_key_event)
+                monitor.start()
+            except OSError as e:
+                logger.error(f"KeyMonitor failed to start: {e}. Super-key passthrough will not work.")
 
         t = threading.Thread(target=monitor_wrapper, daemon=True)
         t.start()
