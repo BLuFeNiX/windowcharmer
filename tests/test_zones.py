@@ -60,3 +60,19 @@ def test_maximized_vertically_treated_as_full() -> None:
 def test_unknown_zone_when_no_dim() -> None:
     win = _window(0, 0, 100, 100)
     assert determine_tile_zone(win, None, False) == "unknown"
+
+
+def test_zone_deviation_tolerance() -> None:
+    dim = _dim()
+    # Window placed 50 px off the ideal left-full zone — within _ZONE_DEVIATION=128
+    win = _window(dim.x_left + 50, dim.y_top, dim.w_side - 50, dim.h_full + 50)
+    assert determine_tile_zone(win, dim, False) == "left"
+
+
+def test_destroyed_window_returns_unknown() -> None:
+    from unittest.mock import patch
+
+    win = MagicMock()
+    # Simulate get_window_position returning None (window destroyed mid-call)
+    with patch("windowcharmer.tiling.zones.get_window_position", return_value=None):
+        assert determine_tile_zone(win, _dim(), False) == "unknown"

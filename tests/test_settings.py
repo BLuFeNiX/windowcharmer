@@ -6,15 +6,27 @@ def test_next_ratio_wraps() -> None:
     n = len(cfg.supported_ratios)
     for _ in range(n):
         cfg.next_ratio(1)
-    # After a full cycle we should be back to idx 2 (initial)
-    assert cfg.ratio_idx == 2
+    assert cfg.ratio_idx == Config._DEFAULT_RATIO_IDX
 
 
 def test_next_ratio_backward_wraps() -> None:
     cfg = Config(2560)
     cfg.next_ratio(-1)
-    # Going back from 2 → 1
-    assert cfg.ratio_idx == 1
+    assert cfg.ratio_idx == Config._DEFAULT_RATIO_IDX - 1
+
+
+def test_next_ratio_multi_step_forward() -> None:
+    cfg = Config(2560)
+    initial = cfg.ratio_idx
+    cfg.next_ratio(2)
+    assert cfg.ratio_idx == (initial + 2) % len(cfg.supported_ratios)
+
+
+def test_next_ratio_multi_step_backward() -> None:
+    cfg = Config(2560)
+    initial = cfg.ratio_idx
+    cfg.next_ratio(-2)
+    assert cfg.ratio_idx == (initial - 2) % len(cfg.supported_ratios)
 
 
 def test_per_desktop_ratios() -> None:
