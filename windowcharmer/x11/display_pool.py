@@ -1,17 +1,22 @@
-import threading
 import logging
+import threading
+from typing import ClassVar
+
 from Xlib import display
 from Xlib.display import Display
 
 logger = logging.getLogger(__name__)
 
+
 class DisplayPool:
+    """Manages named Display connections, one per role (wm, mapper, monitor, grabber).
+
+    Each name must only ever be accessed from one thread — the pool provides
+    role-based, not thread-based, separation.
     """
-    Manages named Display connections. Each name must only ever be accessed from one
-    thread; the pool provides role-based, not thread-based, separation.
-    """
-    _displays: dict[str, Display] = {}
-    _lock = threading.Lock()
+
+    _displays: ClassVar[dict[str, Display]] = {}
+    _lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
     def get_display(cls, name: str) -> Display:
