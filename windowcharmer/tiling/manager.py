@@ -200,10 +200,17 @@ class WindowManager:
             return self.d.create_resource_object("window", val[0])
         return None
 
+    _warned_missing_desktop: bool = False
+
     def get_active_desktop(self) -> int:
         """Returns the index of the current virtual desktop."""
         val = get_property_value(self.root, self.atom.current_desktop)
-        return val[0] if val else 0
+        if val is None:
+            if not WindowManager._warned_missing_desktop:
+                logger.warning("_NET_CURRENT_DESKTOP not set — WM may not be EWMH-compliant; defaulting to desktop 0")
+                WindowManager._warned_missing_desktop = True
+            return 0
+        return val[0]
 
     def get_gtk_frame_extents(self, window: Window) -> FrameExtents | None:
         """Returns GTK CSD shadow extents if present."""
