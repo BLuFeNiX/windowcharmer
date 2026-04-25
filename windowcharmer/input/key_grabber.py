@@ -16,7 +16,7 @@ _BAD_ACCESS_RETRY_DELAY = 1.0
 
 class KeyGrabber:
     # Modifiers to ignore when grabbing keys (NumLock, CapsLock, etc.)
-    IGNORED_MODIFIERS: ClassVar[list[int]] = [0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask]
+    IGNORED_MODIFIERS: ClassVar[tuple[int, ...]] = (0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask)
 
     def __init__(
         self,
@@ -70,46 +70,47 @@ class KeyGrabber:
 
     def start(self) -> None:
         """Main event loop. Retries once on BadAccess before exiting."""
-        self._run_loop(retry_on_bad_access=True)
+        for attempt in (1, 2):
+            self.grab_keys()
+            try:
+                while True:
+                    event = self.dpy.next_event()
 
-    def _run_loop(self, retry_on_bad_access: bool) -> None:
-        self.grab_keys()
+                    if event.type == X.KeyPress:
+                        keycode = event.detail
+                        if keycode in self.keycode_map:
+                            self.keycode_map[keycode]()
 
-        try:
-            while True:
-                event = self.dpy.next_event()
+                    elif event.type == X.MappingNotify:
+                        self.dpy.refresh_keyboard_mapping(event)
+                        logger.debug(f"MappingNotify: request={event.request}")
 
-                if event.type == X.KeyPress:
-                    keycode = event.detail
-                    if keycode in self.keycode_map:
-                        self.keycode_map[keycode]()
+                        if event.request == X.MappingKeyboard:
+                            if self.on_mapping_notify:
+                                self.on_mapping_notify(event)
+                            self.ungrab_keys()
+                            # grab_keys() re-reads current keycodes from the X server, so
+                            # key_combinations (keysym→callback) doesn't need to be rebuilt.
+                            self.grab_keys()
 
-                elif event.type == X.MappingNotify:
-                    self.dpy.refresh_keyboard_mapping(event)
-                    logger.debug(f"MappingNotify: request={event.request}")
-
-                    if event.request == X.MappingKeyboard:
-                        if self.on_mapping_notify:
-                            self.on_mapping_notify(event)
-                        self.ungrab_keys()
-                        self.grab_keys()
-
-        except BadAccess as e:
-            self.ungrab_keys()
-            if retry_on_bad_access:
-                logger.warning(
-                    f"KeyGrabber: BadAccess — another client may own a grab. "
-                    f"Retrying in {_BAD_ACCESS_RETRY_DELAY:.0f}s... ({e})"
-                )
-                time.sleep(_BAD_ACCESS_RETRY_DELAY)
-                self._run_loop(retry_on_bad_access=False)
-            else:
-                logger.error("KeyGrabber: BadAccess persists after retry — exiting.")
+            except BadAccess as e:
+                self.ungrab_keys()
+                if attempt == 1:
+                    logger.warning(
+                        f"KeyGrabber: BadAccess — another client may own a grab. "
+                        f"Retrying in {_BAD_ACCESS_RETRY_DELAY:.0f}s... ({e})"
+                    )
+                    time.sleep(_BAD_ACCESS_RETRY_DELAY)
+                else:
+                    logger.error("KeyGrabber: BadAccess persists after retry — exiting.")
+                    sys.exit(1)
+            except Exception as e:
+                logger.error(f"KeyGrabber error: {e}")
+                logger.debug("", exc_info=True)
                 sys.exit(1)
-        except Exception as e:
-            logger.error(f"KeyGrabber error: {e}")
-            logger.debug("", exc_info=True)
-            sys.exit(1)
 
     def stop(self) -> None:
+        # No-op: the event loop exits via sys.exit() or process death.
+        # For a clean SIGTERM shutdown, close self.dpy from another thread to
+        # unblock next_event(), or send a synthetic event via XSendEvent.
         pass
