@@ -50,9 +50,10 @@ class KeyboardMapper:
 
     def refresh_keycodes(self) -> None:
         """Re-fetch keycodes from X server if mapping changed externally."""
-        self.super_l_keycode = self._dpy.keysym_to_keycode(self.super_l_keysym)
-        self.hyper_l_keycode = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
-        logger.debug(f"Refreshed keycodes: Super_L={self.super_l_keycode}, Hyper_L={self.hyper_l_keycode}")
+        with self._lock:
+            self.super_l_keycode = self._dpy.keysym_to_keycode(self.super_l_keysym)
+            self.hyper_l_keycode = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
+            logger.debug(f"Refreshed keycodes: Super_L={self.super_l_keycode}, Hyper_L={self.hyper_l_keycode}")
 
     def apply_super_hyper_swap(self) -> None:
         """
