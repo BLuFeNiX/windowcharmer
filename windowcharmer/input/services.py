@@ -22,6 +22,7 @@ class InputServices:
         self.on_key_event = on_key_event_callback
         self._threads: list[threading.Thread] = []
         self._stop_event = threading.Event()
+        self._key_monitor: KeyMonitor | None = None
 
     def start_all(self) -> None:
         """Start all monitoring threads."""
@@ -56,10 +57,12 @@ class InputServices:
         logger.debug("Udev monitor started")
 
     def _start_key_monitor(self) -> None:
+        monitor_dpy: Display = DisplayPool.get_display("monitor")
+        self._key_monitor = KeyMonitor(monitor_dpy, self.on_key_event)
+        monitor = self._key_monitor
+
         def monitor_wrapper() -> None:
             try:
-                monitor_dpy: Display = DisplayPool.get_display("monitor")
-                monitor = KeyMonitor(monitor_dpy, self.on_key_event)
                 monitor.start()
             except OSError as e:
                 logger.error(f"KeyMonitor failed to start: {e}. Super-key passthrough will not work.")
@@ -71,5 +74,5 @@ class InputServices:
 
     def stop_all(self) -> None:
         self._stop_event.set()
-        # Threads are daemon threads, so they will be killed when main process exits,
-        # but we set the event to allow clean loop exit where possible.
+        if self._key_monitor:
+            self._key_monitor.stop()

@@ -16,12 +16,13 @@ class KeyMonitor:
     def __init__(self, dpy: Display, callback: Callable[[Any], None]) -> None:
         self.dpy = dpy
         self.callback = callback
+        self.ctx: Any = None
 
     def start(self) -> None:
         if not self.dpy.has_extension("RECORD"):
             raise OSError("RECORD extension not found.")
-        
-        ctx = self.dpy.record_create_context(
+
+        self.ctx = self.dpy.record_create_context(
             0,
             [record.AllClients],
             [{
@@ -56,5 +57,9 @@ class KeyMonitor:
                 
                 self.callback(event)
 
-        self.dpy.record_enable_context(ctx, inner_callback)
-        self.dpy.record_free_context(ctx)
+        self.dpy.record_enable_context(self.ctx, inner_callback)
+        self.dpy.record_free_context(self.ctx)
+
+    def stop(self) -> None:
+        if self.ctx is not None:
+            self.dpy.record_disable_context(self.ctx)
