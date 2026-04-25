@@ -1,22 +1,21 @@
-import threading
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any
-from ..x11.display_pool import DisplayPool
-from Xlib.display import Display
+
 import pyudev
-from .sleep_detector import WakeFromSleepDetector
+from Xlib.display import Display
+
+from ..x11.display_pool import DisplayPool
 from .key_monitor import KeyMonitor
+from .sleep_detector import WakeFromSleepDetector
 
 logger = logging.getLogger(__name__)
 
+
 class InputServices:
-    """
-    Manages background input monitoring services:
-    - Sleep/Wake detection
-    - Udev device events (keyboard plug/unplug)
-    - Low-level X11 key monitoring (Passthrough logic)
-    """
+    """Manages background input monitoring: sleep/wake, keyboard hotplug, XRecord key events."""
+
     def __init__(self, on_rebind_callback: Callable[[], None], on_key_event_callback: Callable[[Any], None]) -> None:
         self.on_rebind = on_rebind_callback
         self.on_key_event = on_key_event_callback
@@ -31,7 +30,7 @@ class InputServices:
         self._start_key_monitor()
 
     def _start_sleep_monitor(self) -> None:
-        detector = WakeFromSleepDetector(callback=self.on_rebind)
+        detector = WakeFromSleepDetector(callback=self.on_rebind, stop_event=self._stop_event)
         t = threading.Thread(target=detector.start, daemon=True)
         t.start()
         self._threads.append(t)
@@ -77,6 +76,7 @@ class InputServices:
         logger.debug("Key monitor started")
 
     def stop_all(self) -> None:
+        """Signal all monitors to stop and clean up."""
         self._stop_event.set()
         if self._key_monitor:
             self._key_monitor.stop()

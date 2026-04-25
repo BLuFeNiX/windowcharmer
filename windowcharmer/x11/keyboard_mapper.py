@@ -1,39 +1,36 @@
-import threading
 import logging
+import threading
 from collections.abc import Sequence
-from Xlib import X, XK
-from Xlib.ext import xtest
-from .display_pool import DisplayPool
+
+from Xlib import XK, X
 from Xlib.display import Display
-import traceback
+from Xlib.ext import xtest
+
+from .display_pool import DisplayPool
 
 logger = logging.getLogger(__name__)
 
+
 class KeyboardMapper:
-    """
-    Handles the complex logic of remapping Super_L <-> Hyper_L and simulating key events.
-    This encapsulates the state and locking required to make X11 keyboard modifications safe.
-    """
+    """Manages the Super_L ↔ Hyper_L keymap swap and key event simulation."""
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        # We need a dedicated display connection for mapping operations
         self._dpy: Display = DisplayPool.get_display("mapper")
-        
-        # Calculate keycodes/keysyms once
+
         self.super_l_keysym: int = XK.string_to_keysym('Super_L')
         self.hyper_l_keysym: int = XK.string_to_keysym('Hyper_L')
-        
-        # Initialize keycodes
+
         self.super_l_keycode: int = self._dpy.keysym_to_keycode(self.super_l_keysym)
         self.hyper_l_keycode: int = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
 
-        # Backup original mappings
         self.super_l_orig: Sequence[Sequence[int]] | None = None
         self.hyper_l_orig: Sequence[Sequence[int]] | None = None
-        
+
         self._backup_mappings()
 
     def _backup_mappings(self) -> None:
+        """Snapshot the current keysym assignments so cleanup() can restore them."""
         try:
             super_map = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
             hyper_map = self._dpy.get_keyboard_mapping(self.hyper_l_keycode, 1)
@@ -49,25 +46,26 @@ class KeyboardMapper:
             logger.error(f"Error backing up key mappings: {e}")
 
     def refresh_keycodes(self) -> None:
-        """Re-fetch keycodes from X server if mapping changed externally."""
+        """Re-fetch keycodes from the X server after a MappingNotify."""
         with self._lock:
             self.super_l_keycode = self._dpy.keysym_to_keycode(self.super_l_keysym)
             self.hyper_l_keycode = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
             logger.debug(f"Refreshed keycodes: Super_L={self.super_l_keycode}, Hyper_L={self.hyper_l_keycode}")
 
     def apply_super_hyper_swap(self) -> None:
-        """
-        Swaps the Super_L and Hyper_L keysyms on the keyboard mapping.
-        Safe to call repeatedly; checks current state first.
-        """
+        """Swap Super_L and Hyper_L keysyms. Idempotent — checks current state first."""
         with self._lock:
             try:
-                # Check if swap is needed to prevent loops and redundant calls
                 current_map = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
-                if current_map and len(current_map) > 0 and len(current_map[0]) > 0:
-                    if current_map[0][0] == self.hyper_l_keysym:
-                        logger.debug("Super_L is already mapped to Hyper_L. No action needed.")
-                        return
+                already_swapped = (
+                    current_map
+                    and len(current_map) > 0
+                    and len(current_map[0]) > 0
+                    and current_map[0][0] == self.hyper_l_keysym
+                )
+                if already_swapped:
+                    logger.debug("Super_L already mapped to Hyper_L — no action needed.")
+                    return
 
                 logger.info("Swapping Super_L and Hyper_L...")
                 self._change_keyboard_mapping(self.super_l_keycode, self.hyper_l_keysym)
@@ -75,13 +73,28 @@ class KeyboardMapper:
                 self._dpy.sync()
             except Exception as e:
                 logger.error(f"Error rebinding keys: {e}")
-                logger.debug(traceback.format_exc())
+                logger.debug("", exc_info=True)
+
+    def force_canonical(self) -> bool:
+        """Restore canonical mapping (lower keycode→Super_L, higher→Hyper_L) without the swap logic.
+
+        Returns False if either keysym is absent from the current mapping.
+        """
+        with self._lock:
+            kc_a = self._dpy.keysym_to_keycode(self.super_l_keysym)
+            kc_b = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
+            if not kc_a or not kc_b:
+                return False
+            lo, hi = min(kc_a, kc_b), max(kc_a, kc_b)
+            self._change_keyboard_mapping(lo, self.super_l_keysym)
+            self._change_keyboard_mapping(hi, self.hyper_l_keysym)
+            self._dpy.sync()
+            return True
 
     def simulate_hyper_press(self) -> None:
-        """Simulate a press and release of the Hyper_L key."""
+        """Simulate a Hyper_L key press+release (used for Super passthrough)."""
         with self._lock:
             try:
-                # We simulate Hyper_L keycode, which we mapped to Super_L keysym
                 xtest.fake_input(self._dpy, X.KeyPress, self.hyper_l_keycode)
                 xtest.fake_input(self._dpy, X.KeyRelease, self.hyper_l_keycode)
                 self._dpy.flush()
@@ -89,18 +102,21 @@ class KeyboardMapper:
                 logger.error(f"Error simulating key: {e}")
 
     def _change_keyboard_mapping(self, keycode: int, new_keysym: int) -> None:
-        keysyms = [(new_keysym,)]
-        self._dpy.change_keyboard_mapping(keycode, keysyms)
+        self._dpy.change_keyboard_mapping(keycode, [(new_keysym,)])
         self._dpy.flush()
 
     def cleanup(self) -> None:
-        """Restore original mappings."""
+        """Restore the original keysym assignments."""
         logger.info("Restoring keyboard mapping...")
         try:
-            if self.super_l_orig is not None:
-                self._dpy.change_keyboard_mapping(self.super_l_keycode, self.super_l_orig)
-            if self.hyper_l_orig is not None:
-                self._dpy.change_keyboard_mapping(self.hyper_l_keycode, self.hyper_l_orig)
+            if self.super_l_orig is None or self.hyper_l_orig is None:
+                logger.warning(
+                    "Original key mappings unavailable — keyboard mapping not restored "
+                    "(backup failed at startup)."
+                )
+                return
+            self._dpy.change_keyboard_mapping(self.super_l_keycode, self.super_l_orig)
+            self._dpy.change_keyboard_mapping(self.hyper_l_keycode, self.hyper_l_orig)
             self._dpy.sync()
         except Exception as e:
             logger.warning(f"Error restoring keyboard mapping: {e}")
