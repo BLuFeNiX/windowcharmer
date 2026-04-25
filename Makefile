@@ -4,7 +4,7 @@ lint:
 	ruff check windowcharmer/
 
 format:
-	black windowcharmer/ tests/
+	ruff format windowcharmer/ tests/
 	ruff check --fix windowcharmer/
 
 typecheck:

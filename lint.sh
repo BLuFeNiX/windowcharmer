@@ -9,7 +9,7 @@ if [ ! -d "$VENV" ]; then
     echo "Creating virtual environment '$VENV'..."
     python3 -m venv "$VENV"
     echo "Installing requirements..."
-    $VENV/bin/pip install -q mypy ruff python-xlib pyudev platformdirs
+    $VENV/bin/pip install -q -e ".[dev]"
 fi
 
 echo "Running ruff check..."
