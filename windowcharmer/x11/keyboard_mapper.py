@@ -44,6 +44,7 @@ class KeyboardMapper:
                 self.hyper_l_orig = hyper_map
         except Exception as e:
             logger.error(f"Error backing up key mappings: {e}")
+            logger.debug("", exc_info=True)
 
     def refresh_keycodes(self) -> None:
         """Re-fetch keycodes from the X server after a MappingNotify."""
@@ -100,6 +101,7 @@ class KeyboardMapper:
                 self._dpy.flush()
             except Exception as e:
                 logger.error(f"Error simulating key: {e}")
+                logger.debug("", exc_info=True)
 
     def _change_keyboard_mapping(self, keycode: int, new_keysym: int) -> None:
         self._dpy.change_keyboard_mapping(keycode, [(new_keysym,)])
@@ -120,3 +122,4 @@ class KeyboardMapper:
             self._dpy.sync()
         except Exception as e:
             logger.warning(f"Error restoring keyboard mapping: {e}")
+            logger.debug("", exc_info=True)

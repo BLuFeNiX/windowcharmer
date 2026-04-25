@@ -26,8 +26,8 @@ jobs:
       - name: ruff check
         run: ruff check windowcharmer/
 
-      - name: black check
-        run: black --check windowcharmer/ tests/
+      - name: ruff format check
+        run: ruff format --check windowcharmer/ tests/
 
       - name: mypy
         run: mypy windowcharmer/

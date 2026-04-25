@@ -32,6 +32,7 @@ class KeyGrabber:
         self.on_mapping_notify = on_mapping_notify
 
     def _get_keycode(self, key_name: str) -> int:
+        """Return the X11 keycode for key_name, or 0 if unknown."""
         keysym = XK.string_to_keysym(key_name)
         if keysym == 0:
             return 0
