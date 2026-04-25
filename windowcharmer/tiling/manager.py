@@ -75,12 +75,12 @@ class WindowManager:
         Grabs the X server to ensure atomic window updates.
         """
         with self._lock:
+            self.d.grab_server()
             try:
-                self.d.grab_server()
                 self._update_state()
-                
+
                 win = self.get_active_window()
-                
+
                 match action:
                     case TileAction.BIGGER:
                         self.resize_all_windows(1)
@@ -88,14 +88,15 @@ class WindowManager:
                         self.resize_all_windows(-1)
                     case _ if win:
                         self._apply_tile_action(action, win)
-                
-                self.d.flush()
             except Exception as e:
                 logger.error(f"Error executing action {action}: {e}")
                 logger.debug(traceback.format_exc())
             finally:
-                self.d.ungrab_server()
-                self.d.flush()
+                try:
+                    self.d.ungrab_server()
+                    self.d.flush()
+                except Exception as e:
+                    logger.error(f"ungrab failed: {e}")
 
     def _apply_tile_action(self, action: TileAction, win: Window) -> None:
         match action:
