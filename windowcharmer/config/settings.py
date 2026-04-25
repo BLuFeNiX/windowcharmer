@@ -1,5 +1,5 @@
 class Config:
-    supported_ratios: list[float] = [
+    supported_ratios: tuple[float, ...] = (
         0.0,       # only 2 columns
         3 / 9,     # 3 even columns
         40 / 100,  # 40% center
@@ -8,7 +8,7 @@ class Config:
         55 / 100,  # 55% center
         60 / 100,  # 60% center
         65 / 100,  # 65% center
-    ]
+    )
 
     def __init__(self, screen_width: int) -> None:
         self.screen_width: int = screen_width
