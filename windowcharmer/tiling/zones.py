@@ -1,4 +1,3 @@
-from __future__ import annotations
 from Xlib.xobject.drawable import Window
 from ..config import ScreenDimensions
 

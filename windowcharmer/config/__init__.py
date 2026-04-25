@@ -1,4 +1,3 @@
-from __future__ import annotations
 from .settings import Config
 from .keybindings import KeyBindings
 from .dimensions import ScreenDimensions

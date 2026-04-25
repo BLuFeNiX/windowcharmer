@@ -1,4 +1,3 @@
-from __future__ import annotations
 from typing import Callable, Any
 from Xlib import X, XK
 from Xlib.display import Display

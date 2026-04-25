@@ -1,4 +1,3 @@
-from __future__ import annotations
 import threading
 from Xlib import display
 from Xlib.display import Display
