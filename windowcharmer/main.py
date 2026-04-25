@@ -149,6 +149,7 @@ class WindowCharmerApp:
                 self.input_services.stop_all()
             if self.mapper:
                 self.mapper.cleanup()
+            DisplayPool.close_all()
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
