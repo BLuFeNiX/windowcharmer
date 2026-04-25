@@ -35,8 +35,16 @@ class KeyboardMapper:
 
     def _backup_mappings(self) -> None:
         try:
-            self.super_l_orig = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
-            self.hyper_l_orig = self._dpy.get_keyboard_mapping(self.hyper_l_keycode, 1)
+            super_map = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
+            hyper_map = self._dpy.get_keyboard_mapping(self.hyper_l_keycode, 1)
+            # If a previous run crashed mid-swap, the mapping is already inverted.
+            # Restore canonical keysyms so cleanup() doesn't restore the swapped state.
+            if super_map and len(super_map) > 0 and len(super_map[0]) > 0 and super_map[0][0] == self.hyper_l_keysym:
+                self.super_l_orig = [[self.super_l_keysym]]
+                self.hyper_l_orig = [[self.hyper_l_keysym]]
+            else:
+                self.super_l_orig = super_map
+                self.hyper_l_orig = hyper_map
         except Exception as e:
             logger.error(f"Error backing up key mappings: {e}")
 
