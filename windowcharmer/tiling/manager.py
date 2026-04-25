@@ -32,11 +32,11 @@ class WindowManager:
         
         screen = self.d.screen()
         self.root: Window = screen.root
-        self.screenWidth: int = screen.width_in_pixels
-        self.screenHeight: int = screen.height_in_pixels
-        
+        self.screen_width: int = screen.width_in_pixels
+        self.screen_height: int = screen.height_in_pixels
+
         self.active_desktop: int = 0
-        self.config: Config = Config(self.screenWidth)
+        self.config: Config = Config(self.screen_width)
         self.dim: ScreenDimensions | None = None
 
     def _update_state(self) -> None:
@@ -48,7 +48,7 @@ class WindowManager:
             self.active_desktop = self.get_active_desktop()
             
             # Update config state instead of recreating
-            self.config.update_screen_width(self.screenWidth)
+            self.config.update_screen_width(self.screen_width)
             self.config.set_active_desktop(self.active_desktop)
             
             # Get the desktop workarea [x, y, width, height]
@@ -56,11 +56,11 @@ class WindowManager:
             if workarea:
                 _, wa_y, _, wa_h = workarea[0:4]
             else:
-                wa_y, wa_h = 0, self.screenHeight
+                wa_y, wa_h = 0, self.screen_height
 
             # Update dimensions used for zone calculations
             self.dim = ScreenDimensions(
-                self.screenWidth, 
+                self.screen_width,
                 wa_y,
                 wa_h,
                 self.config.center_width
