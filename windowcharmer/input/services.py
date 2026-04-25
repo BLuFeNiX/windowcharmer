@@ -47,8 +47,12 @@ class InputServices:
                 device = monitor.poll(timeout=0.5)
                 if device is None:
                     continue
-                if device.action == 'add' and device.properties.get('DEVNAME', '').startswith('/dev/input/event'):
-                    logger.info("Input device added, triggering rebind...")
+                if (
+                    device.action == 'add'
+                    and device.properties.get('DEVNAME', '').startswith('/dev/input/event')
+                    and device.properties.get('ID_INPUT_KEYBOARD') == '1'
+                ):
+                    logger.info("Keyboard added, triggering rebind...")
                     self.on_rebind()
 
         t = threading.Thread(target=monitor_loop, daemon=True)
