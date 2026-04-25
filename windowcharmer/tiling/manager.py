@@ -34,6 +34,7 @@ class WindowManager:
         self.root: Window = screen.root
         self.screen_width: int = screen.width_in_pixels
         self.screen_height: int = screen.height_in_pixels
+        # Note: screen_width/height are refreshed in _update_state to handle RandR changes.
 
         self.active_desktop: int = 0
         self.config: Config = Config(self.screen_width)
@@ -45,6 +46,10 @@ class WindowManager:
         Uses _NET_WORKAREA to respect system panels and bars.
         """
         try:
+            screen = self.d.screen()
+            self.screen_width = screen.width_in_pixels
+            self.screen_height = screen.height_in_pixels
+
             self.active_desktop = self.get_active_desktop()
             
             # Update config state instead of recreating
@@ -205,8 +210,8 @@ class WindowManager:
         client_w = width - d_l - d_r
         client_h = height - d_t - d_b
         
-        # Maximized windows ignore configure() calls, so we must clear the flag first.
-        if self.is_window_maximized_vertically(window):
+        # Maximized windows ignore configure() calls, so we must clear both flags first.
+        if self.is_window_maximized_vertically(window) or self.is_window_maximized_horizontally(window):
             self.action_restore(window)
 
         window.configure(
@@ -248,6 +253,12 @@ class WindowManager:
         state = get_property_value(window, self.atom.state)
         if state:
             return self.atom.v_max in state
+        return False
+
+    def is_window_maximized_horizontally(self, window: Window) -> bool:
+        state = get_property_value(window, self.atom.state)
+        if state:
+            return self.atom.h_max in state
         return False
 
     def list_windows(self) -> list[Window]:
