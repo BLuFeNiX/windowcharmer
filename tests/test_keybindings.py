@@ -7,10 +7,10 @@ from windowcharmer.config.actions import TileAction
 
 
 def test_defaults_load_without_config(tmp_path: Path) -> None:
-    with patch("windowcharmer.config.keybindings.Path.home", return_value=tmp_path):
+    # tmp_path has no windowcharmer/ subdirectory → no config.toml → pure defaults
+    with patch.dict("os.environ", {"XDG_CONFIG_HOME": str(tmp_path)}):
         bindings = load_keybindings()
-    defaults = get_default_keybindings()
-    assert bindings == defaults
+    assert bindings == get_default_keybindings()
 
 
 def test_user_config_overrides_default(tmp_path: Path) -> None:

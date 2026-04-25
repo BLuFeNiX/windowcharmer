@@ -1,13 +1,15 @@
-import os
-import tomllib
 import logging
-from pathlib import Path
+import tomllib
+
+from platformdirs import user_config_path
+
 from .actions import TileAction
 
 logger = logging.getLogger(__name__)
 
 
 def get_default_keybindings() -> dict[str, TileAction]:
+    """Return the built-in keybinding defaults."""
     return {
         'Up':           TileAction.MAX,
         'Down':         TileAction.CENTER,
@@ -37,11 +39,10 @@ def get_default_keybindings() -> dict[str, TileAction]:
 
 
 def load_keybindings() -> dict[str, TileAction]:
-    """Loads bindings: defaults overridden by user config."""
+    """Return defaults overridden by ~/.config/windowcharmer/config.toml if present."""
     bindings = get_default_keybindings()
 
-    config_dir = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config'))
-    config_file = config_dir / 'windowcharmer' / 'config.toml'
+    config_file = user_config_path("windowcharmer") / "config.toml"
 
     if not config_file.exists():
         return bindings
@@ -50,12 +51,11 @@ def load_keybindings() -> dict[str, TileAction]:
         with open(config_file, "rb") as f:
             config_data = tomllib.load(f)
 
-        if "keybindings" in config_data:
-            for key, action_str in config_data["keybindings"].items():
-                try:
-                    bindings[key] = TileAction(action_str)
-                except ValueError:
-                    logger.warning(f"Invalid action '{action_str}' in config.toml for key '{key}'. Ignoring.")
+        for key, action_str in config_data.get("keybindings", {}).items():
+            try:
+                bindings[key] = TileAction(action_str)
+            except ValueError:
+                logger.warning(f"Invalid action '{action_str}' for key '{key}' in config.toml — ignoring.")
 
     except (OSError, tomllib.TOMLDecodeError) as e:
         logger.error(f"Failed to load config file {config_file}: {e}")
