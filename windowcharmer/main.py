@@ -41,6 +41,8 @@ class WindowCharmerApp:
     def do_action(self, action: TileAction) -> None:
         """Execute a window manager action (tile, center, etc.)"""
         if action == TileAction.EXIT:
+            # SystemExit is not Exception, so it propagates through KeyGrabber._run_loop
+            # and unwinds cleanly through the try/finally in run_daemon.
             sys.exit()
         self.wm.execute_action(action)
 

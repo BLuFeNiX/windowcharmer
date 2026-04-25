@@ -53,6 +53,10 @@ def load_keybindings() -> dict[str, TileAction]:
         with open(config_file, "rb") as f:
             config_data = tomllib.load(f)
 
+        for section in config_data:
+            if section != "keybindings":
+                logger.warning(f"Unknown section [{section}] in config.toml — ignoring.")
+
         for key, action_str in config_data.get("keybindings", {}).items():
             try:
                 bindings[key] = TileAction(action_str)
