@@ -1,5 +1,6 @@
 from enum import StrEnum
 
+
 class TileAction(StrEnum):
     LEFT = "left"
     RIGHT = "right"

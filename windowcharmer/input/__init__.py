@@ -4,4 +4,4 @@ from .services import InputServices
 from .sleep_detector import WakeFromSleepDetector
 from .super_passthrough import SuperPassthroughTracker
 
-__all__ = ['KeyGrabber', 'KeyMonitor', 'InputServices', 'WakeFromSleepDetector', 'SuperPassthroughTracker']
+__all__ = ['InputServices', 'KeyGrabber', 'KeyMonitor', 'SuperPassthroughTracker', 'WakeFromSleepDetector']

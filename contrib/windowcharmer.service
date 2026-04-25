@@ -1,0 +1,16 @@
+[Unit]
+Description=WindowCharmer window tiling daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/windowcharmer
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+# Uncomment to enable debug logging:
+# Environment=WINDOWCHARMER_DEBUG=1
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,10 +1,11 @@
+import logging
 from collections.abc import Callable
 from typing import Any
-from Xlib import X, XK
-from Xlib.ext import record
+
+from Xlib import XK, X
 from Xlib.display import Display
+from Xlib.ext import record
 from Xlib.protocol import rq
-import logging
 
 logger = logging.getLogger(__name__)
 
