@@ -1,6 +1,7 @@
 import threading
 import logging
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 from ..x11.display_pool import DisplayPool
 from Xlib.display import Display
 import pyudev
