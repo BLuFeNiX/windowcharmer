@@ -10,7 +10,7 @@ from .tiling.manager import WindowManager
 from .input.key_grabber import KeyGrabber
 from .x11.keyboard_mapper import KeyboardMapper
 from .input.services import InputServices
-from .config import KeyBindings, TileAction
+from .config import load_keybindings, TileAction
 from .input.super_passthrough import SuperPassthroughTracker
 import traceback
 
@@ -20,7 +20,7 @@ class WindowCharmerApp:
     def __init__(self, debug: bool = False) -> None:
         self.debug = debug
         self.wm = WindowManager()
-        self.key_bindings = KeyBindings.load()
+        self.key_bindings = load_keybindings()
         
         self.passthrough_tracker: SuperPassthroughTracker | None = None
         
