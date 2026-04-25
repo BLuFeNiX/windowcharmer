@@ -164,7 +164,6 @@ def main() -> None:
         sys.exit(0)
 
     if args.debug:
-        logger.setLevel(logging.DEBUG)
         logging.getLogger('windowcharmer').setLevel(logging.DEBUG)
 
     app = WindowCharmerApp(debug=args.debug)
