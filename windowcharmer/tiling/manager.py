@@ -254,15 +254,10 @@ class WindowManager:
         window_ids = get_property_value(self.root, self.atom.client_list_stacking)
         if window_ids is None:
             window_ids = get_property_value(self.root, self.atom.client_list)
-        
-        windows = []
-        if window_ids:
-            for wid in window_ids:
-                try:
-                    windows.append(self.d.create_resource_object('window', wid))
-                except Exception:
-                    logger.debug(f"Skipping stale window id {wid}")
-        return windows
+
+        if not window_ids:
+            return []
+        return [self.d.create_resource_object('window', wid) for wid in window_ids]
 
     def get_window_desktop(self, window: Window) -> int | None:
         """Returns the desktop index for a given window."""
