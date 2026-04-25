@@ -1,15 +1,11 @@
 import logging
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from Xlib import X
 
 logger = logging.getLogger(__name__)
-
-# If Super is held longer than this, clear stuck state and suppress the passthrough.
-# Handles the case where a focus change consumes the KeyRelease event.
-_SUPER_TIMEOUT = 5.0
 
 
 class SuperPassthroughTracker:
@@ -19,6 +15,10 @@ class SuperPassthroughTracker:
     press (which most DEs interpret as opening the application menu). If another
     key is pressed while Super is held, suppress the menu.
     """
+
+    # If Super is held longer than this, clear stuck state and suppress the passthrough.
+    # Handles the case where a focus change consumes the KeyRelease event.
+    _SUPER_TIMEOUT: ClassVar[float] = 5.0
 
     def __init__(self, super_keycode: int, on_passthrough: Callable[[], None]) -> None:
         self.super_keycode = super_keycode
@@ -35,7 +35,7 @@ class SuperPassthroughTracker:
         """Process a KeyPress or KeyRelease event."""
         # Auto-reset stuck state: if Super has been "held" for too long, the release
         # was likely consumed by a focus change and we should clear the flag.
-        if self.super_pressed and (time.time() - self._super_press_time) > _SUPER_TIMEOUT:
+        if self.super_pressed and (time.time() - self._super_press_time) > self._SUPER_TIMEOUT:
             logger.debug("Super press timed out — clearing stuck state")
             self.super_pressed = False
             self.key_pressed_while_super_down = False
@@ -53,7 +53,7 @@ class SuperPassthroughTracker:
             self.super_pressed = False
             elapsed = time.time() - self._super_press_time
             logger.debug("Super_L released")
-            if not self.key_pressed_while_super_down and elapsed < _SUPER_TIMEOUT:
+            if not self.key_pressed_while_super_down and elapsed < self._SUPER_TIMEOUT:
                 logger.debug("Forwarding bare Super tap as Hyper_L")
                 self.on_passthrough()
             self.key_pressed_while_super_down = False

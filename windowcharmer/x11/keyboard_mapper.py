@@ -1,6 +1,5 @@
 import logging
 import threading
-from collections.abc import Sequence
 
 from Xlib import XK, X
 from Xlib.display import Display
@@ -24,8 +23,8 @@ class KeyboardMapper:
         self.super_l_keycode: int = self._dpy.keysym_to_keycode(self.super_l_keysym)
         self.hyper_l_keycode: int = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
 
-        self.super_l_orig: Sequence[Sequence[int]] | None = None
-        self.hyper_l_orig: Sequence[Sequence[int]] | None = None
+        self.super_l_orig: list[list[int]] | None = None
+        self.hyper_l_orig: list[list[int]] | None = None
 
         self._backup_mappings()
 

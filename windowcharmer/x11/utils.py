@@ -65,14 +65,6 @@ class AtomCache:
     def client_list_stacking(self) -> int:
         return self._get("_NET_CLIENT_LIST_STACKING")
 
-    @property
-    def name(self) -> int:
-        return self._get("_NET_WM_NAME")
-
-    @property
-    def name_fallback(self) -> int:
-        return self._get("WM_NAME")
-
 
 def get_property_value(window: Window, atom: int, property_type: int = X.AnyPropertyType) -> Sequence[int] | None:
     """Fetch a window property value, returning None on failure or absence."""

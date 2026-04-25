@@ -15,6 +15,7 @@ from .input.key_grabber import KeyGrabber
 from .input.services import InputServices
 from .input.super_passthrough import SuperPassthroughTracker
 from .tiling.manager import WindowManager
+from .x11.display_pool import DisplayPool
 from .x11.keyboard_mapper import KeyboardMapper
 
 logger = logging.getLogger(__name__)
@@ -84,8 +85,6 @@ class WindowCharmerApp:
     def run_daemon(self) -> None:
         logger.info("Starting WindowCharmer Daemon...")
 
-        from .x11.display_pool import DisplayPool
-
         self.grab_dpy = DisplayPool.get_display("grabber")
         mapper = self.mapper = KeyboardMapper()
 
@@ -140,8 +139,6 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.fix_keymap:
-        from .x11.display_pool import DisplayPool
-
         try:
             mapper = KeyboardMapper()
             if not mapper.force_canonical():

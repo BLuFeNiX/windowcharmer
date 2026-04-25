@@ -1,6 +1,9 @@
+from typing import ClassVar
+
+
 class Config:
     # fmt: off
-    supported_ratios: tuple[float, ...] = (
+    supported_ratios: ClassVar[tuple[float, ...]] = (
         0.0,       # only 2 columns
         3 / 9,     # 3 even columns
         40 / 100,  # 40% center
@@ -12,6 +15,8 @@ class Config:
     )
     # fmt: on
 
+    _DEFAULT_RATIO_IDX: ClassVar[int] = 2  # index of 50% in supported_ratios
+
     def __init__(self, screen_width: int) -> None:
         self.screen_width: int = screen_width
 
@@ -22,7 +27,7 @@ class Config:
         self.center_width: int = 0
         self.active_desktop: int = 0
 
-        self.ratio_idx: int = 2
+        self.ratio_idx: int = self._DEFAULT_RATIO_IDX
         self.reload()
 
     def update_screen_width(self, width: int) -> None:
@@ -37,14 +42,14 @@ class Config:
 
     def reload(self) -> None:
         """Recalculate dimensions based on current state."""
-        self.ratio_idx = self._desktop_ratios.get(self.active_desktop, 2)
+        self.ratio_idx = self._desktop_ratios.get(self.active_desktop, self._DEFAULT_RATIO_IDX)
 
         self.ratio = self.supported_ratios[self.ratio_idx]
         self.center_width = int(self.screen_width * self.ratio)
 
     def next_ratio(self, step: int = 1) -> None:
         """Change the layout ratio for the active desktop."""
-        current_idx = self._desktop_ratios.get(self.active_desktop, 2)
+        current_idx = self._desktop_ratios.get(self.active_desktop, self._DEFAULT_RATIO_IDX)
 
         new_idx = (current_idx + step) % len(self.supported_ratios)
 

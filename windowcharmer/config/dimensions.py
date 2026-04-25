@@ -9,7 +9,6 @@ class ScreenDimensions:
     wa_y: int
     wa_h: int
     center_width: int
-    measured_decorations: int = 0
 
     # Calculated fields
     side_width: int = field(init=False)

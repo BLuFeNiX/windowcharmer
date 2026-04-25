@@ -60,10 +60,8 @@ class WindowManager:
         screen = self.d.screen()
         self.root: Window = screen.root
         self.screen_width: int = screen.width_in_pixels
-        self.screen_height: int = screen.height_in_pixels
-        # Note: screen_width/height are refreshed in _update_state to handle RandR changes.
+        # screen_width is refreshed in _update_state to handle RandR changes.
 
-        self.active_desktop: int = 0
         self.config: Config = Config(self.screen_width)
         self.dim: ScreenDimensions | None = None
 
@@ -72,18 +70,17 @@ class WindowManager:
         try:
             screen = self.d.screen()
             self.screen_width = screen.width_in_pixels
-            self.screen_height = screen.height_in_pixels
 
-            self.active_desktop = self.get_active_desktop()
+            active_desktop = self.get_active_desktop()
 
             self.config.update_screen_width(self.screen_width)
-            self.config.set_active_desktop(self.active_desktop)
+            self.config.set_active_desktop(active_desktop)
 
             workarea = get_property_value(self.root, self.atom.workarea)
             if workarea:
                 _, wa_y, _, wa_h = workarea[0:4]
             else:
-                wa_y, wa_h = 0, self.screen_height
+                wa_y, wa_h = 0, screen.height_in_pixels
 
             self.dim = ScreenDimensions(
                 self.screen_width,
@@ -248,7 +245,7 @@ class WindowManager:
         window_zones = []
         for win in self.list_windows():
             try:
-                if self.get_window_desktop(win) != self.active_desktop:
+                if self.get_window_desktop(win) != self.config.active_desktop:
                     continue
                 zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
                 window_zones.append((win, zone))
