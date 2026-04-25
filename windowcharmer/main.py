@@ -138,8 +138,6 @@ class WindowCharmerApp:
                     self.debounce_timer.cancel()
             if self.grabber:
                 self.grabber.ungrab_keys()
-            if self.grab_dpy:
-                self.grab_dpy.close()
             if self.input_services:
                 self.input_services.stop_all()
             if self.mapper:
