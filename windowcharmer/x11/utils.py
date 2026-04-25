@@ -1,4 +1,5 @@
-from typing import Any
+from collections.abc import Sequence
+from typing import cast
 from Xlib import X
 from Xlib.display import Display
 from Xlib.xobject.drawable import Window
@@ -32,15 +33,12 @@ class AtomCache:
         else:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-def get_property_value(window: Window, atom: int, property_type: int = X.AnyPropertyType) -> Any | None:
+def get_property_value(window: Window, atom: int, property_type: int = X.AnyPropertyType) -> Sequence[int] | None:
     """Helper to get a window property value cleanly."""
     try:
         prop = window.get_full_property(atom, property_type)
         if prop and prop.value is not None:
-             # Handle list-like values (most properties) by returning the raw value
-             # which is usually a tuple or array.
-             # For single values, caller often does val[0].
-             return prop.value
+            return cast(Sequence[int], prop.value)
     except Exception:
         pass
     return None
