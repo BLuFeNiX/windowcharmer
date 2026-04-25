@@ -1,20 +1,28 @@
+import logging
+
+from Xlib.error import BadDrawable, BadWindow
 from Xlib.xobject.drawable import Window
 
 from ..config import ScreenDimensions
+
+logger = logging.getLogger(__name__)
 
 # Tolerate up to this many pixels of position/size drift when matching a zone.
 # 128 px covers GTK shadow offsets and minor rounding across WMs.
 _ZONE_DEVIATION = 128
 
 
-def get_window_position(window: Window) -> tuple[int, int]:
-    """Return the (x, y) position of a window relative to the root.
+def get_window_position(window: Window) -> tuple[int, int] | None:
+    """Return the (x, y) position of a window relative to the root, or None if gone.
 
     See docs/x11_coordinates.md for why abs() is applied to the translated coords.
     """
-    root = window.get_geometry().root
-    coords = window.translate_coords(root, 0, 0)
-    return (abs(coords.x), abs(coords.y)) if coords else (0, 0)
+    try:
+        root = window.get_geometry().root
+        coords = window.translate_coords(root, 0, 0)
+        return (abs(coords.x), abs(coords.y)) if coords else (0, 0)
+    except (BadWindow, BadDrawable):
+        return None
 
 
 def determine_tile_zone(
@@ -26,14 +34,21 @@ def determine_tile_zone(
     """Heuristically determine which tiling zone a window currently occupies.
 
     Returns a zone string like ``"left"``, ``"top-right"``, or ``"unknown"``.
+    Returns ``"unknown"`` if the window has been destroyed.
     See docs/x11_coordinates.md for coordinate system notes.
     """
     if not dim:
         return "unknown"
 
-    x, y = get_window_position(window)
-    geom = window.get_geometry()
-    w, h = geom.width, geom.height
+    try:
+        pos = get_window_position(window)
+        if pos is None:
+            return "unknown"
+        x, y = pos
+        geom = window.get_geometry()
+        w, h = geom.width, geom.height
+    except (BadWindow, BadDrawable):
+        return "unknown"
 
     def within(val: int, target: int, dev: int = deviation) -> bool:
         return target - dev <= val <= target + dev

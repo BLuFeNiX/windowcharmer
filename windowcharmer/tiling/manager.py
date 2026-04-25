@@ -94,6 +94,7 @@ class WindowManager:
         except Exception as e:
             logger.error(f"Error updating state: {e}")
             logger.debug("", exc_info=True)
+            self.dim = None  # mark stale so next action is a no-op rather than using old geometry
 
     def execute_action(self, action: TileAction) -> None:
         """Thread-safe entry point for a tiling action. State is read before grabbing the server."""
@@ -210,7 +211,7 @@ class WindowManager:
     def get_gtk_frame_extents(self, window: Window) -> FrameExtents | None:
         """Returns GTK CSD shadow extents if present."""
         extents = get_property_value(window, self.atom.gtk_extents)
-        if extents:
+        if extents and len(extents) >= 4:
             return FrameExtents(extents[0], extents[1], extents[2], extents[3])
         return None
 
@@ -246,13 +247,13 @@ class WindowManager:
         """Adjusts the center-column ratio for all tiled windows on the active desktop."""
         window_zones = []
         for win in self.list_windows():
-            if self.get_window_desktop(win) == self.active_desktop:
-                window_zones.append(
-                    (
-                        win,
-                        determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win)),
-                    )
-                )
+            try:
+                if self.get_window_desktop(win) != self.active_desktop:
+                    continue
+                zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
+                window_zones.append((win, zone))
+            except Exception as e:
+                logger.debug(f"Skipping window during resize_all: {e}")
 
         self.config.next_ratio(step)
         self._update_state()
