@@ -1,6 +1,6 @@
 import threading
 import logging
-from typing import Any
+from collections.abc import Sequence
 from Xlib import X, XK
 from Xlib.ext import xtest
 from .display_pool import DisplayPool
@@ -28,8 +28,8 @@ class KeyboardMapper:
         self.hyper_l_keycode: int = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
 
         # Backup original mappings
-        self.super_l_orig: Any | None = None
-        self.hyper_l_orig: Any | None = None
+        self.super_l_orig: Sequence[Sequence[int]] | None = None
+        self.hyper_l_orig: Sequence[Sequence[int]] | None = None
         
         self._backup_mappings()
 
