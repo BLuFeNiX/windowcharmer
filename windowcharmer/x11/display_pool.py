@@ -1,6 +1,9 @@
 import threading
+import logging
 from Xlib import display
 from Xlib.display import Display
+
+logger = logging.getLogger(__name__)
 
 class DisplayPool:
     """
@@ -28,6 +31,6 @@ class DisplayPool:
             for name, dpy in cls._displays.items():
                 try:
                     dpy.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Error closing display {name!r}: {e}")
             cls._displays.clear()

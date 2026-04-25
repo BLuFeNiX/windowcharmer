@@ -94,5 +94,5 @@ class KeyboardMapper:
                 self._dpy.change_keyboard_mapping(self.hyper_l_keycode, self.hyper_l_orig)
             self._dpy.sync()
             self._dpy.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error restoring keyboard mapping: {e}")

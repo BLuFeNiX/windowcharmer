@@ -260,7 +260,7 @@ class WindowManager:
                 try:
                     windows.append(self.d.create_resource_object('window', wid))
                 except Exception:
-                    pass
+                    logger.debug(f"Skipping stale window id {wid}")
         return windows
 
     def get_window_desktop(self, window: Window) -> int | None:
