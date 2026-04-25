@@ -26,37 +26,48 @@ You will likely want to run this automatically on login, which is an exercise le
 
 #### Default Keybindings
 
-**The activation key is Super_L** (the left "Windows" key), and the bindings can currently only be changed from source code:
-```
-key_combinations = {
-    'Up':           lambda: do_action("max"),           # Up
-    'Down':         lambda: do_action("center"),        # Down
-    'Left':         lambda: do_action("left"),          # Left
-    'Right':        lambda: do_action("right"),         # Right
-    'space':        lambda: do_action("restore"),       # spacebar
+**The activation key is Super_L** (the left "Windows" key). Default bindings:
 
-    'KP_Home':      lambda: do_action("top-left"),      # Numpad 7
-    'KP_Up':        lambda: do_action("top-center"),    # Numpad 8
-    'KP_Page_Up':   lambda: do_action("top-right"),     # Numpad 9
-    'KP_Left':      lambda: do_action("left"),          # Numpad 4
-    'KP_Begin':     lambda: do_action("center"),        # Numpad 5
-    'KP_Right':     lambda: do_action("right"),         # Numpad 6
-    'KP_End':       lambda: do_action("bottom-left"),   # Numpad 1
-    'KP_Down':      lambda: do_action("bottom-center"), # Numpad 2
-    'KP_Page_Down': lambda: do_action("bottom-right"),  # Numpad 3
-    'KP_Insert':    lambda: do_action("restore"),       # Numpad 0
-
-    'KP_Prior':     lambda: do_action("top-right"),     # Numpad 9 (alternate keyboard layout)
-    'KP_Next':      lambda: do_action("bottom-right"),  # Numpad 3 (alternate keyboard layout)
-
-    'KP_Add':       lambda: do_action("bigger"),        # Numpad +
-    'KP_Subtract':  lambda: do_action("smaller"),       # Numpad -
-
-    'BackSpace':    lambda: sys.exit(),                 # backspace
-}
-```
+| Key | Action |
+|-----|--------|
+| `Up` | `max` — maximize |
+| `Down` | `center` — center column |
+| `Left` | `left` — left column |
+| `Right` | `right` — right column |
+| `space` | `restore` — unmaximize |
+| `Numpad 7` (`KP_Home`) | `top-left` |
+| `Numpad 8` (`KP_Up`) | `top-center` |
+| `Numpad 9` (`KP_Page_Up`) | `top-right` |
+| `Numpad 4` (`KP_Left`) | `left` |
+| `Numpad 5` (`KP_Begin`) | `center` |
+| `Numpad 6` (`KP_Right`) | `right` |
+| `Numpad 1` (`KP_End`) | `bottom-left` |
+| `Numpad 2` (`KP_Down`) | `bottom-center` |
+| `Numpad 3` (`KP_Page_Down`) | `bottom-right` |
+| `Numpad 0` (`KP_Insert`) | `restore` |
+| `Numpad +` (`KP_Add`) | `bigger` — widen center column |
+| `Numpad -` (`KP_Subtract`) | `smaller` — narrow center column |
+| `BackSpace` | `exit` — stop the daemon |
 
 For example, to tile the window to the left, press `Super` and the `left arrow` key. To kill the daemon, press `Super+backspace`.
+
+#### Configuration
+
+Keybindings can be overridden in `~/.config/windowcharmer/config.toml` (respects `$XDG_CONFIG_HOME`):
+
+```toml
+[keybindings]
+# Map Super+F1 to center the window
+F1 = "center"
+# Map Super+F2 to tile left
+F2 = "left"
+```
+
+Supported action strings (all values of the `TileAction` enum):
+`left`, `right`, `center`, `top-left`, `bottom-left`, `top-right`, `bottom-right`,
+`top-center`, `bottom-center`, `max`, `restore`, `bigger`, `smaller`, `exit`
+
+Key names follow the X11 keysym naming convention (e.g. `Up`, `KP_Home`, `F1`, `space`).
 
 ## Support
 

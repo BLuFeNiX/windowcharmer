@@ -3,4 +3,13 @@ __pycache__
 .venv
 venv
 .test_venv
-*.egg-info
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/
