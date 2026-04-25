@@ -18,8 +18,8 @@ class KeyboardMapper:
         self._lock = threading.Lock()
         self._dpy: Display = DisplayPool.get_display("mapper")
 
-        self.super_l_keysym: int = XK.string_to_keysym('Super_L')
-        self.hyper_l_keysym: int = XK.string_to_keysym('Hyper_L')
+        self.super_l_keysym: int = XK.string_to_keysym("Super_L")
+        self.hyper_l_keysym: int = XK.string_to_keysym("Hyper_L")
 
         self.super_l_keycode: int = self._dpy.keysym_to_keycode(self.super_l_keysym)
         self.hyper_l_keycode: int = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
@@ -113,8 +113,7 @@ class KeyboardMapper:
         try:
             if self.super_l_orig is None or self.hyper_l_orig is None:
                 logger.warning(
-                    "Original key mappings unavailable — keyboard mapping not restored "
-                    "(backup failed at startup)."
+                    "Original key mappings unavailable — keyboard mapping not restored (backup failed at startup)."
                 )
                 return
             self._dpy.change_keyboard_mapping(self.super_l_keycode, self.super_l_orig)

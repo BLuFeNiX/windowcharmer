@@ -35,6 +35,7 @@ class _ZoneSpec(NamedTuple):
 
 
 # Maps each tile action to its target zone geometry and max-flag state.
+# fmt: off
 _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
     TileAction.LEFT:          _ZoneSpec('x_left',   'y_top',    'w_side',   'h_full', 1, 0),
     TileAction.RIGHT:         _ZoneSpec('x_right',  'y_top',    'w_side',   'h_full', 1, 0),
@@ -46,6 +47,7 @@ _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
     TileAction.TOP_CENTER:    _ZoneSpec('x_center', 'y_top',    'w_center', 'h_half', 0, 0, True),
     TileAction.BOTTOM_CENTER: _ZoneSpec('x_center', 'y_bottom', 'w_center', 'h_half', 0, 0, True),
 }
+# fmt: on
 
 
 class WindowManager:
@@ -176,8 +178,10 @@ class WindowManager:
 
         window.configure(
             value_mask=X.CWX | X.CWY | X.CWWidth | X.CWHeight,
-            x=int(x), y=int(y),
-            width=int(max(1, client_w)), height=int(max(1, client_h)),
+            x=int(x),
+            y=int(y),
+            width=int(max(1, client_w)),
+            height=int(max(1, client_h)),
         )
 
     def set_max_flags(self, window: Window, v: int = 1, h: int = 1) -> None:
@@ -195,7 +199,7 @@ class WindowManager:
         """Returns the currently focused window, or None."""
         val = get_property_value(self.root, self.atom.window)
         if val:
-            return self.d.create_resource_object('window', val[0])
+            return self.d.create_resource_object("window", val[0])
         return None
 
     def get_active_desktop(self) -> int:
@@ -231,7 +235,7 @@ class WindowManager:
             window_ids = get_property_value(self.root, self.atom.client_list)
         if not window_ids:
             return []
-        return [self.d.create_resource_object('window', wid) for wid in window_ids]
+        return [self.d.create_resource_object("window", wid) for wid in window_ids]
 
     def get_window_desktop(self, window: Window) -> int | None:
         """Returns the desktop index for a given window."""
@@ -243,10 +247,12 @@ class WindowManager:
         window_zones = []
         for win in self.list_windows():
             if self.get_window_desktop(win) == self.active_desktop:
-                window_zones.append((
-                    win,
-                    determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win)),
-                ))
+                window_zones.append(
+                    (
+                        win,
+                        determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win)),
+                    )
+                )
 
         self.config.next_ratio(step)
         self._update_state()

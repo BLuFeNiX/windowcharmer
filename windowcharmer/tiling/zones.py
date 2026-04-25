@@ -38,24 +38,24 @@ def determine_tile_zone(
     def within(val: int, target: int, dev: int = deviation) -> bool:
         return target - dev <= val <= target + dev
 
-    v_pos = 'unknown'
+    v_pos = "unknown"
     if is_maximized_vertically or within(h, dim.h_full):
-        v_pos = 'full'
+        v_pos = "full"
     elif within(h, dim.h_half):
         if within(y, dim.y_top):
-            v_pos = 'top'
+            v_pos = "top"
         elif within(y, dim.y_bottom):
-            v_pos = 'bottom'
+            v_pos = "bottom"
 
-    h_pos = 'unknown'
+    h_pos = "unknown"
     if within(w, dim.w_side):
         if within(x, dim.x_left):
-            h_pos = 'left'
+            h_pos = "left"
         elif within(x, dim.x_right):
-            h_pos = 'right'
+            h_pos = "right"
         elif within(x, dim.x_center):
-            h_pos = 'center'
+            h_pos = "center"
     elif within(w, dim.w_center) and within(x, dim.x_center):
-        h_pos = 'center'
+        h_pos = "center"
 
     return f"{v_pos}-{h_pos}".replace("full-", "")

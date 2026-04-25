@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 def get_default_keybindings() -> dict[str, TileAction]:
     """Return the built-in keybinding defaults."""
+    # fmt: off
     return {
         'Up':           TileAction.MAX,
         'Down':         TileAction.CENTER,
@@ -19,23 +20,24 @@ def get_default_keybindings() -> dict[str, TileAction]:
 
         'KP_Home':      TileAction.TOP_LEFT,
         'KP_Up':        TileAction.TOP_CENTER,
-        'KP_Page_Up':   TileAction.TOP_RIGHT,
+        'KP_Page_Up':   TileAction.TOP_RIGHT,   # alias for KP_Prior on some keyboards
         'KP_Left':      TileAction.LEFT,
         'KP_Begin':     TileAction.CENTER,
         'KP_Right':     TileAction.RIGHT,
         'KP_End':       TileAction.BOTTOM_LEFT,
         'KP_Down':      TileAction.BOTTOM_CENTER,
-        'KP_Page_Down': TileAction.BOTTOM_RIGHT,
+        'KP_Page_Down': TileAction.BOTTOM_RIGHT, # alias for KP_Next on some keyboards
         'KP_Insert':    TileAction.RESTORE,
 
-        'KP_Prior':     TileAction.TOP_RIGHT,
-        'KP_Next':      TileAction.BOTTOM_RIGHT,
+        'KP_Prior':     TileAction.TOP_RIGHT,    # same target as KP_Page_Up (legacy alias)
+        'KP_Next':      TileAction.BOTTOM_RIGHT, # same target as KP_Page_Down (legacy alias)
 
         'KP_Add':       TileAction.BIGGER,
         'KP_Subtract':  TileAction.SMALLER,
 
         'BackSpace':    TileAction.EXIT,
     }
+    # fmt: on
 
 
 def load_keybindings() -> dict[str, TileAction]:

@@ -9,9 +9,11 @@ from Xlib.protocol import rq
 
 logger = logging.getLogger(__name__)
 
+
 def get_keycode(dpy: Display, keystring: str) -> int:
     code = dpy.keysym_to_keycode(XK.string_to_keysym(keystring))
     return int(code)
+
 
 class KeyMonitor:
     def __init__(self, dpy: Display, callback: Callable[[Any], None]) -> None:
@@ -26,17 +28,19 @@ class KeyMonitor:
         self.ctx = self.dpy.record_create_context(
             0,
             [record.AllClients],
-            [{
-                'core_requests': (0, 0),
-                'core_replies': (0, 0),
-                'ext_requests': (0, 0, 0, 0),
-                'ext_replies': (0, 0, 0, 0),
-                'delivered_events': (0, 0),
-                'device_events': (X.KeyPress, X.KeyRelease, X.MappingNotify),
-                'errors': (0, 0),
-                'client_started': False,
-                'client_died': False,
-            }]
+            [
+                {
+                    "core_requests": (0, 0),
+                    "core_replies": (0, 0),
+                    "ext_requests": (0, 0, 0, 0),
+                    "ext_replies": (0, 0, 0, 0),
+                    "delivered_events": (0, 0),
+                    "device_events": (X.KeyPress, X.KeyRelease, X.MappingNotify),
+                    "errors": (0, 0),
+                    "client_started": False,
+                    "client_died": False,
+                }
+            ],
         )
 
         def inner_callback(reply: Any) -> None:
@@ -51,11 +55,11 @@ class KeyMonitor:
 
             data = reply.data
             while len(data):
-                event, data = rq.EventField('event').parse_binary_value(data, self.dpy.display, None, None)
+                event, data = rq.EventField("event").parse_binary_value(data, self.dpy.display, None, None)
                 if event.type == X.MappingNotify:
                     # Update Xlib's internal mapping so keysym_to_keycode works correctly
                     self.dpy.refresh_keyboard_mapping(event)
-                
+
                 self.callback(event)
 
         self.dpy.record_enable_context(self.ctx, inner_callback)

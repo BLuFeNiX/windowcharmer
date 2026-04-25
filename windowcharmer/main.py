@@ -83,6 +83,7 @@ class WindowCharmerApp:
         logger.info("Starting WindowCharmer Daemon...")
 
         from .x11.display_pool import DisplayPool
+
         self.grab_dpy = DisplayPool.get_display("grabber")
         mapper = self.mapper = KeyboardMapper()
 
@@ -128,7 +129,7 @@ class WindowCharmerApp:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     parser = argparse.ArgumentParser(description="WindowCharmer Daemon")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
@@ -138,6 +139,7 @@ def main() -> None:
 
     if args.fix_keymap:
         from .x11.display_pool import DisplayPool
+
         try:
             mapper = KeyboardMapper()
             if not mapper.force_canonical():
@@ -149,7 +151,7 @@ def main() -> None:
         sys.exit(0)
 
     if args.debug:
-        logging.getLogger('windowcharmer').setLevel(logging.DEBUG)
+        logging.getLogger("windowcharmer").setLevel(logging.DEBUG)
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 

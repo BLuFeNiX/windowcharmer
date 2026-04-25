@@ -40,16 +40,16 @@ class InputServices:
         def monitor_loop() -> None:
             context = pyudev.Context()
             monitor = pyudev.Monitor.from_netlink(context)
-            monitor.filter_by(subsystem='input')
+            monitor.filter_by(subsystem="input")
 
             while not self._stop_event.is_set():
                 device = monitor.poll(timeout=0.5)
                 if device is None:
                     continue
                 if (
-                    device.action == 'add'
-                    and device.properties.get('DEVNAME', '').startswith('/dev/input/event')
-                    and device.properties.get('ID_INPUT_KEYBOARD') == '1'
+                    device.action == "add"
+                    and device.properties.get("DEVNAME", "").startswith("/dev/input/event")
+                    and device.properties.get("ID_INPUT_KEYBOARD") == "1"
                 ):
                     logger.info("Keyboard added, triggering rebind...")
                     self.on_rebind()

@@ -5,10 +5,10 @@ from windowcharmer.config.dimensions import ScreenDimensions
 @pytest.mark.parametrize(
     "screen_width, wa_y, wa_h, center_width",
     [
-        (2560, 0, 1440, 853),   # 2560×1440, ~1/3 center (853*3=2559; 1px gap from //2)
+        (2560, 0, 1440, 853),  # 2560×1440, ~1/3 center (853*3=2559; 1px gap from //2)
         (3840, 0, 1600, 1536),  # 3840×1600, 40% center
-        (5120, 40, 1400, 2048), # 5120×1440 with 40px panel, 40% center
-        (2560, 0, 1440, 0),     # two-column mode (no center)
+        (5120, 40, 1400, 2048),  # 5120×1440 with 40px panel, 40% center
+        (2560, 0, 1440, 0),  # two-column mode (no center)
     ],
 )
 def test_column_adjacency(screen_width: int, wa_y: int, wa_h: int, center_width: int) -> None:

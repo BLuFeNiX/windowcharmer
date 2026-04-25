@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 @dataclass
 class ScreenDimensions:
     """Zone geometry for a single screen, computed from workarea and center-column width."""
+
     screen_width: int
     wa_y: int
     wa_h: int
