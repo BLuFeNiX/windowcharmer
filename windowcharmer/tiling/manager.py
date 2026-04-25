@@ -1,4 +1,5 @@
 import threading
+from typing import NamedTuple
 from Xlib import X, protocol
 from Xlib.display import Display
 from Xlib.xobject.drawable import Window
@@ -11,6 +12,13 @@ from ..x11.utils import AtomCache, get_property_value
 from .zones import determine_tile_zone
 
 logger = logging.getLogger(__name__)
+
+
+class FrameExtents(NamedTuple):
+    left: int
+    right: int
+    top: int
+    bottom: int
 
 class WindowManager:
     def __init__(self) -> None:
@@ -185,12 +193,12 @@ class WindowManager:
             
         if gtk_fe:
             # Shift frame origin so visible area starts at (x, y)
-            x -= gtk_fe['left']
-            y -= gtk_fe['top']
-            
+            x -= gtk_fe.left
+            y -= gtk_fe.top
+
             # Expand requested size to include shadows
-            width += (gtk_fe['left'] + gtk_fe['right'])
-            height += (gtk_fe['top'] + gtk_fe['bottom'])
+            width += gtk_fe.left + gtk_fe.right
+            height += gtk_fe.top + gtk_fe.bottom
 
         # The X11 'configure' call expects the CLIENT area size.
         client_w = width - d_l - d_r
@@ -228,10 +236,10 @@ class WindowManager:
         val = get_property_value(self.root, self.atom.current_desktop)
         return val[0] if val else 0
 
-    def get_gtk_frame_extents(self, window: Window) -> dict[str, int] | None:
+    def get_gtk_frame_extents(self, window: Window) -> FrameExtents | None:
         extents = get_property_value(window, self.atom.gtk_extents)
         if extents:
-            return {'left': extents[0], 'right': extents[1], 'top': extents[2], 'bottom': extents[3]}
+            return FrameExtents(extents[0], extents[1], extents[2], extents[3])
         return None
 
     def is_window_maximized_vertically(self, window: Window) -> bool:
