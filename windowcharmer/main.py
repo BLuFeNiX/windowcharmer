@@ -10,6 +10,7 @@ from typing import Any
 from Xlib import X
 from Xlib.display import Display
 
+from . import __version__
 from .config import TileAction, load_keybindings
 from .input.key_grabber import KeyGrabber
 from .input.services import InputServices
@@ -133,6 +134,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     parser = argparse.ArgumentParser(description="WindowCharmer Daemon")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--fix-keymap", action="store_true", help="Restore canonical Super_L/Hyper_L mapping and exit")
 
