@@ -36,6 +36,7 @@ class WindowCharmerApp:
         self.mapper: KeyboardMapper | None = None
         self.grab_dpy: Display | None = None
         self.input_services: InputServices | None = None
+        self.grabber: KeyGrabber | None = None
 
     def do_action(self, action: TileAction) -> None:
         """Execute a window manager action (tile, center, etc.)"""
@@ -121,16 +122,16 @@ class WindowCharmerApp:
         self.input_services.start_all()
 
         # 3. Start Main Hotkey Grabber (Blocking Loop)
-        grabber = KeyGrabber(
-            self.grab_dpy, 
-            self._setup_key_bindings(), 
+        self.grabber = KeyGrabber(
+            self.grab_dpy,
+            self._setup_key_bindings(),
             modifier=X.Mod4Mask,
             on_mapping_notify=self._handle_rebind_request
         )
-        
+
         try:
             logger.info("Daemon started. Press Ctrl+C to exit.")
-            grabber.start()
+            self.grabber.start()
         except (KeyboardInterrupt, SystemExit):
             pass
         except Exception as e:
@@ -140,6 +141,10 @@ class WindowCharmerApp:
             with self.timer_lock:
                 if self.debounce_timer:
                     self.debounce_timer.cancel()
+            if self.grabber:
+                self.grabber.ungrab_keys()
+            if self.grab_dpy:
+                self.grab_dpy.close()
             if self.input_services:
                 self.input_services.stop_all()
             if self.mapper:
