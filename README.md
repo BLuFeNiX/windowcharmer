@@ -116,7 +116,8 @@ Enable debug logging:
 systemctl --user edit windowcharmer
 # Add:
 # [Service]
-# Environment=WINDOWCHARMER_DEBUG=1
+# ExecStart=
+# ExecStart=%h/.local/bin/windowcharmer --debug
 ```
 
 ---
@@ -148,4 +149,4 @@ xev | grep -i key
 
 ## Support
 
-For issues, questions, or contributions, see the [issue tracker](https://github.com/BLuFeNiX/windowcharmer/issues) or read [CONTRIBUTING.md](CONTRIBUTING.md).
+For issues or questions, see the [issue tracker](https://github.com/BLuFeNiX/windowcharmer/issues).
