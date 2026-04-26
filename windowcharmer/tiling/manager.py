@@ -8,6 +8,7 @@ from Xlib.display import Display
 from Xlib.error import ConnectionClosedError, DisplayConnectionError
 from Xlib.xobject.drawable import Window
 
+from ..cinnamon.animator import CinnamonAnimator
 from ..config.actions import TileAction
 from ..config.dimensions import ScreenDimensions
 from ..config.settings import Config
@@ -62,6 +63,7 @@ class WindowManager:
 
         self.config: Config = Config(self.screen_width)
         self.dim: ScreenDimensions | None = None
+        self.animator: CinnamonAnimator = CinnamonAnimator()
 
     def _update_state(self) -> None:
         """Refresh screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
@@ -92,6 +94,15 @@ class WindowManager:
             self._update_state()
             win = self.get_active_window()
 
+            # Tile actions can be animated via Cinnamon's compositor. This must
+            # run outside grab_server because Cinnamon is a separate X11 client.
+            if action in _TILE_SPEC and win and self._try_animated_tile(action, win):
+                return
+            if action == TileAction.BIGGER and self._try_animated_resize_all(1):
+                return
+            if action == TileAction.SMALLER and self._try_animated_resize_all(-1):
+                return
+
             self.d.grab_server()
             try:
                 match action:
@@ -109,6 +120,68 @@ class WindowManager:
         except Exception as e:
             logger.error(f"Error executing action {action}: {e}")
             logger.debug("", exc_info=True)
+
+    def _try_animated_tile(self, action: TileAction, win: Window) -> bool:
+        """Attempt to animate a tile via Cinnamon compositor. Returns True if handled."""
+        spec = _TILE_SPEC.get(action)
+        if not self.dim or spec is None:
+            return False
+        if spec.needs_center and self.config.center_width == 0:
+            return False
+        x, y, w, h = spec.geom(self.dim)
+        return self.animator.animate(win.id, x, y, w, h)
+
+    def _try_animated_resize_all(self, step: int) -> bool:
+        """Animate all tiled windows to the next ratio in one compositor call."""
+        if not self.dim:
+            return False
+
+        window_zones = []
+        for win in self.list_windows():
+            try:
+                if self.get_window_desktop(win) != self.config.active_desktop:
+                    continue
+                zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
+                if zone != "unknown":
+                    window_zones.append((win, zone))
+            except Exception as e:
+                logger.debug("Skipping window during animated resize_all: %s", e)
+
+        if not window_zones:
+            return False
+
+        # Compute what the layout will look like after the ratio step, without
+        # committing the change yet so the fallback path can do it if needed.
+        next_idx = (self.config.ratio_idx + step) % len(Config.supported_ratios)
+        next_center_width = int(self.screen_width * Config.supported_ratios[next_idx])
+        next_dim = ScreenDimensions(self.screen_width, self.dim.wa_y, self.dim.wa_h, next_center_width)
+
+        targets = []
+        for win, zone in window_zones:
+            if next_idx == 0:
+                zone = zone.replace("center", "left")
+            try:
+                action = TileAction(zone)
+            except ValueError:
+                continue
+            spec = _TILE_SPEC.get(action)
+            if not spec:
+                continue
+            if spec.needs_center and next_center_width == 0:
+                continue
+            x, y, w, h = spec.geom(next_dim)
+            targets.append((win.id, x, y, w, h))
+
+        if not targets:
+            return False
+
+        if not self.animator.animate_batch(targets):
+            return False
+
+        # Commit ratio change only after successful animation.
+        self.config.next_ratio(step)
+        self._update_state()
+        return True
 
     def _apply_tile_action(self, action: TileAction, win: Window) -> None:
         """Dispatch a tile action using the _TILE_SPEC table."""
