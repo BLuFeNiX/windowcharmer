@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -26,27 +27,23 @@ class FrameExtents:
 
 
 class _ZoneSpec(NamedTuple):
-    x_attr: str
-    y_attr: str
-    w_attr: str
-    h_attr: str
+    geom: Callable[[ScreenDimensions], tuple[int, int, int, int]]
     v_max: int
     h_max: int
     needs_center: bool = False
 
 
-# Maps each tile action to its target zone geometry and max-flag state.
 # fmt: off
 _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
-    TileAction.LEFT:          _ZoneSpec('x_left',   'y_top',    'w_side',   'h_full', 1, 0),
-    TileAction.RIGHT:         _ZoneSpec('x_right',  'y_top',    'w_side',   'h_full', 1, 0),
-    TileAction.CENTER:        _ZoneSpec('x_center', 'y_top',    'w_center', 'h_full', 1, 0, True),
-    TileAction.TOP_LEFT:      _ZoneSpec('x_left',   'y_top',    'w_side',   'h_half', 0, 0),
-    TileAction.BOTTOM_LEFT:   _ZoneSpec('x_left',   'y_bottom', 'w_side',   'h_half', 0, 0),
-    TileAction.TOP_RIGHT:     _ZoneSpec('x_right',  'y_top',    'w_side',   'h_half', 0, 0),
-    TileAction.BOTTOM_RIGHT:  _ZoneSpec('x_right',  'y_bottom', 'w_side',   'h_half', 0, 0),
-    TileAction.TOP_CENTER:    _ZoneSpec('x_center', 'y_top',    'w_center', 'h_half', 0, 0, True),
-    TileAction.BOTTOM_CENTER: _ZoneSpec('x_center', 'y_bottom', 'w_center', 'h_half', 0, 0, True),
+    TileAction.LEFT:          _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,   d.h_full), 1, 0),
+    TileAction.RIGHT:         _ZoneSpec(lambda d: (d.x_right,  d.y_top,    d.w_side,   d.h_full), 1, 0),
+    TileAction.CENTER:        _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_full), 1, 0, True),
+    TileAction.TOP_LEFT:      _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,   d.h_half), 0, 0),
+    TileAction.BOTTOM_LEFT:   _ZoneSpec(lambda d: (d.x_left,   d.y_bottom, d.w_side,   d.h_half), 0, 0),
+    TileAction.TOP_RIGHT:     _ZoneSpec(lambda d: (d.x_right,  d.y_top,    d.w_side,   d.h_half), 0, 0),
+    TileAction.BOTTOM_RIGHT:  _ZoneSpec(lambda d: (d.x_right,  d.y_bottom, d.w_side,   d.h_half), 0, 0),
+    TileAction.TOP_CENTER:    _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_half), 0, 0, True),
+    TileAction.BOTTOM_CENTER: _ZoneSpec(lambda d: (d.x_center, d.y_bottom, d.w_center, d.h_half), 0, 0, True),
 }
 # fmt: on
 
@@ -138,14 +135,9 @@ class WindowManager:
         if spec.needs_center and self.config.center_width == 0:
             return
 
+        x, y, w, h = spec.geom(self.dim)
         self.set_max_flags(win, spec.v_max, spec.h_max)
-        self.move_and_resize(
-            win,
-            getattr(self.dim, spec.x_attr),
-            getattr(self.dim, spec.y_attr),
-            getattr(self.dim, spec.w_attr),
-            getattr(self.dim, spec.h_attr),
-        )
+        self.move_and_resize(win, x, y, w, h)
 
     # --- Helpers ---
 
