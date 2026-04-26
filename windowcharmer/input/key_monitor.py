@@ -2,17 +2,12 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from Xlib import XK, X
+from Xlib import X
 from Xlib.display import Display
 from Xlib.ext import record
 from Xlib.protocol import rq
 
 logger = logging.getLogger(__name__)
-
-
-def get_keycode(dpy: Display, keystring: str) -> int:
-    code = dpy.keysym_to_keycode(XK.string_to_keysym(keystring))
-    return int(code)
 
 
 class KeyMonitor:
