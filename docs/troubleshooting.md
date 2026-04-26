@@ -93,11 +93,9 @@ xdpyinfo | grep RECORD
 
 ## Debug logging
 
-Pass `--debug` or set `WINDOWCHARMER_DEBUG=1` (for systemd):
+Pass `--debug`:
 ```sh
 windowcharmer --debug
-# or
-WINDOWCHARMER_DEBUG=1 bash start_daemon.sh
 ```
 
 Debug output includes: keycode resolution, MappingNotify events, zone detection results, and every tiling action dispatched.

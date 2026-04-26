@@ -42,7 +42,7 @@ source .venv/bin/activate
 windowcharmer
 ```
 
-For automatic startup on login, add `start_daemon.sh` to your desktop environment's autostart list, or use the [systemd unit](#systemd-user-service).
+For automatic startup on login, add `windowcharmer` to your desktop environment's autostart list, or use the [systemd unit](#systemd-user-service).
 
 **Note: You do not need to remove conflicting DE keybindings.** WindowCharmer grabs keys exclusively while running, so its bindings take precedence.
 
