@@ -108,9 +108,3 @@ class KeyGrabber:
                 logger.error(f"KeyGrabber error: {e}")
                 logger.debug("", exc_info=True)
                 sys.exit(1)
-
-    def stop(self) -> None:
-        # No-op: the event loop exits via sys.exit() or process death.
-        # For a clean SIGTERM shutdown, close self.dpy from another thread to
-        # unblock next_event(), or send a synthetic event via XSendEvent.
-        pass

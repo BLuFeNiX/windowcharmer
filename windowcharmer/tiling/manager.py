@@ -54,6 +54,7 @@ class WindowManager:
     def __init__(self) -> None:
         """Initializes the WindowManager with its own X11 display connection."""
         self._lock = threading.Lock()
+        self._warned_missing_desktop: bool = False
         self.d: Display = DisplayPool.get_display("wm")
         self.atom = AtomCache(self.d)
 
@@ -200,15 +201,13 @@ class WindowManager:
             return self.d.create_resource_object("window", val[0])
         return None
 
-    _warned_missing_desktop: bool = False
-
     def get_active_desktop(self) -> int:
         """Returns the index of the current virtual desktop."""
         val = get_property_value(self.root, self.atom.current_desktop)
         if val is None:
-            if not WindowManager._warned_missing_desktop:
+            if not self._warned_missing_desktop:
                 logger.warning("_NET_CURRENT_DESKTOP not set — WM may not be EWMH-compliant; defaulting to desktop 0")
-                WindowManager._warned_missing_desktop = True
+                self._warned_missing_desktop = True
             return 0
         return val[0]
 
@@ -219,19 +218,17 @@ class WindowManager:
             return FrameExtents(extents[0], extents[1], extents[2], extents[3])
         return None
 
+    def _is_maximized(self, window: Window, flag: int) -> bool:
+        state = get_property_value(window, self.atom.state)
+        return bool(state and flag in state)
+
     def is_window_maximized_vertically(self, window: Window) -> bool:
         """Returns True if _NET_WM_STATE_MAXIMIZED_VERT is set."""
-        state = get_property_value(window, self.atom.state)
-        if state:
-            return self.atom.v_max in state
-        return False
+        return self._is_maximized(window, self.atom.v_max)
 
     def is_window_maximized_horizontally(self, window: Window) -> bool:
         """Returns True if _NET_WM_STATE_MAXIMIZED_HORZ is set."""
-        state = get_property_value(window, self.atom.state)
-        if state:
-            return self.atom.h_max in state
-        return False
+        return self._is_maximized(window, self.atom.h_max)
 
     def list_windows(self) -> list[Window]:
         """Returns all client windows in stacking order."""

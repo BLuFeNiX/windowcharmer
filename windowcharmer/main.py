@@ -25,8 +25,7 @@ _REBIND_DEBOUNCE_SECONDS = 0.25
 
 
 class WindowCharmerApp:
-    def __init__(self, debug: bool = False) -> None:
-        self.debug = debug
+    def __init__(self) -> None:
         self.wm = WindowManager()
         self.key_bindings = load_keybindings()
 
@@ -156,7 +155,7 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-    app = WindowCharmerApp(debug=args.debug)
+    app = WindowCharmerApp()
     app.run_daemon()
 
 

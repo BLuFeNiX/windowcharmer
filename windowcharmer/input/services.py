@@ -42,21 +42,25 @@ class InputServices:
 
     def _start_udev_monitor(self) -> None:
         def monitor_loop() -> None:
-            context = pyudev.Context()
-            monitor = pyudev.Monitor.from_netlink(context)
-            monitor.filter_by(subsystem="input")
+            try:
+                context = pyudev.Context()
+                monitor = pyudev.Monitor.from_netlink(context)
+                monitor.filter_by(subsystem="input")
 
-            while not self._stop_event.is_set():
-                device = monitor.poll(timeout=0.5)
-                if device is None:
-                    continue
-                if (
-                    device.action == "add"
-                    and device.properties.get("DEVNAME", "").startswith("/dev/input/event")
-                    and device.properties.get("ID_INPUT_KEYBOARD") == "1"
-                ):
-                    logger.info("Keyboard added, triggering rebind...")
-                    self.on_rebind()
+                while not self._stop_event.is_set():
+                    device = monitor.poll(timeout=0.5)
+                    if device is None:
+                        continue
+                    if (
+                        device.action == "add"
+                        and device.properties.get("DEVNAME", "").startswith("/dev/input/event")
+                        and device.properties.get("ID_INPUT_KEYBOARD") == "1"
+                    ):
+                        logger.info("Keyboard added, triggering rebind...")
+                        self.on_rebind()
+            except Exception as e:
+                logger.error(f"Udev monitor failed: {e}")
+                logger.debug("", exc_info=True)
 
         t = threading.Thread(target=monitor_loop, daemon=True)
         t.start()

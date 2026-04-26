@@ -20,9 +20,8 @@ class DisplayPool:
 
     @classmethod
     def get_display(cls, name: str) -> Display:
-        """
-        Retrieves a display connection by name, creating it if necessary.
-        Common names: 'main', 'wm', 'mapper', 'monitor'
+        """Retrieves a display connection by name, creating it if necessary.
+        Common names: 'wm', 'mapper', 'monitor', 'grabber'
         """
         with cls._lock:
             if name not in cls._displays:

@@ -15,7 +15,7 @@ class Config:
     )
     # fmt: on
 
-    _DEFAULT_RATIO_IDX: ClassVar[int] = 2  # index of 50% in supported_ratios
+    _DEFAULT_RATIO_IDX: ClassVar[int] = 2  # index of 40% in supported_ratios
 
     def __init__(self, screen_width: int) -> None:
         self.screen_width: int = screen_width

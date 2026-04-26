@@ -10,8 +10,10 @@ ExecStart=%h/.local/bin/windowcharmer
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
-# Uncomment to enable debug logging:
-# Environment=WINDOWCHARMER_DEBUG=1
+# To enable debug logging, override ExecStart via `systemctl --user edit windowcharmer`:
+# [Service]
+# ExecStart=
+# ExecStart=%h/.local/bin/windowcharmer --debug
 
 [Install]
 WantedBy=graphical-session.target
