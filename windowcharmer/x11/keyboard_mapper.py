@@ -104,7 +104,6 @@ class KeyboardMapper:
 
     def _change_keyboard_mapping(self, keycode: int, new_keysym: int) -> None:
         self._dpy.change_keyboard_mapping(keycode, [(new_keysym,)])
-        self._dpy.flush()
 
     def cleanup(self) -> None:
         """Restore the original keysym assignments."""
