@@ -8,7 +8,9 @@ from Xlib.display import Display
 from Xlib.error import ConnectionClosedError, DisplayConnectionError
 from Xlib.xobject.drawable import Window
 
-from ..config import Config, ScreenDimensions, TileAction
+from ..config.actions import TileAction
+from ..config.dimensions import ScreenDimensions
+from ..config.settings import Config
 from ..x11.display_pool import DisplayPool
 from ..x11.utils import AtomCache, get_property_value
 from .zones import determine_tile_zone

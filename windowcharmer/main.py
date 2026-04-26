@@ -11,7 +11,8 @@ from Xlib.display import Display
 from Xlib.protocol import rq
 
 from . import __version__
-from .config import TileAction, load_keybindings
+from .config.actions import TileAction
+from .config.keybindings import load_keybindings
 from .input.key_grabber import KeyGrabber
 from .input.services import InputServices
 from .input.super_passthrough import SuperPassthroughTracker

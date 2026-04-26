@@ -3,7 +3,7 @@ import logging
 from Xlib.error import BadDrawable, BadWindow
 from Xlib.xobject.drawable import Window
 
-from ..config import ScreenDimensions
+from ..config.dimensions import ScreenDimensions
 
 logger = logging.getLogger(__name__)
 
