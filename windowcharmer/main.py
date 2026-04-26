@@ -26,8 +26,8 @@ _REBIND_DEBOUNCE_SECONDS = 0.25
 
 
 class WindowCharmerApp:
-    def __init__(self) -> None:
-        self.wm = WindowManager()
+    def __init__(self, no_animate: bool = False) -> None:
+        self.wm = WindowManager(no_animate=no_animate)
         self.key_bindings = load_keybindings()
 
         self.passthrough_tracker: SuperPassthroughTracker | None = None
@@ -136,6 +136,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="WindowCharmer Daemon")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--no-animate", action="store_true", help="Disable Cinnamon compositor animations")
     parser.add_argument("--fix-keymap", action="store_true", help="Restore canonical Super_L/Hyper_L mapping and exit")
 
     args = parser.parse_args()
@@ -156,7 +157,7 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-    app = WindowCharmerApp()
+    app = WindowCharmerApp(no_animate=args.no_animate)
     app.run_daemon()
 
 

@@ -57,7 +57,7 @@ _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
 
 
 class WindowManager:
-    def __init__(self) -> None:
+    def __init__(self, no_animate: bool = False) -> None:
         """Initializes the WindowManager with its own X11 display connection."""
         self._warned_missing_desktop: bool = False
         self.d: Display = DisplayPool.get_display("wm")
@@ -70,7 +70,7 @@ class WindowManager:
 
         self.config: Config = Config(self.screen_width)
         self.dim: ScreenDimensions | None = None
-        self.animator: CinnamonAnimator = CinnamonAnimator()
+        self.animator: CinnamonAnimator = CinnamonAnimator(disabled=no_animate)
 
     def _update_state(self) -> None:
         """Refresh screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
