@@ -81,7 +81,15 @@ def test_update_state_falls_back_when_workarea_absent(wm: WindowManager) -> None
     assert wm.dim.wa_h == 1080  # falls back to screen height
 
 
-def test_update_state_sets_dim_none_on_exception(wm: WindowManager) -> None:
+def test_update_state_propagates_exception(wm: WindowManager) -> None:
     wm.d.screen.side_effect = RuntimeError("X gone")
-    wm._update_state()
-    assert wm.dim is None
+    with pytest.raises(RuntimeError):
+        wm._update_state()
+
+
+def test_execute_action_logs_and_returns_on_update_failure(wm: WindowManager, caplog: pytest.LogCaptureFixture) -> None:
+    from windowcharmer.config.actions import TileAction
+
+    wm.d.screen.side_effect = RuntimeError("X gone")
+    wm.execute_action(TileAction.LEFT)  # must not raise
+    assert any("Error executing action" in r.message for r in caplog.records)

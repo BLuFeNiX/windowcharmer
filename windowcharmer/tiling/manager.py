@@ -64,32 +64,26 @@ class WindowManager:
         self.dim: ScreenDimensions | None = None
 
     def _update_state(self) -> None:
-        """Refreshes screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
-        try:
-            screen = self.d.screen()
-            self.screen_width = screen.width_in_pixels
+        """Refresh screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
+        screen = self.d.screen()
+        self.screen_width = screen.width_in_pixels
 
-            active_desktop = self.get_active_desktop()
+        active_desktop = self.get_active_desktop()
+        self.config.update_screen_width(self.screen_width)
+        self.config.set_active_desktop(active_desktop)
 
-            self.config.update_screen_width(self.screen_width)
-            self.config.set_active_desktop(active_desktop)
+        workarea = get_property_value(self.root, self.atom.workarea)
+        if workarea:
+            _, wa_y, _, wa_h = workarea[0:4]
+        else:
+            wa_y, wa_h = 0, screen.height_in_pixels
 
-            workarea = get_property_value(self.root, self.atom.workarea)
-            if workarea:
-                _, wa_y, _, wa_h = workarea[0:4]
-            else:
-                wa_y, wa_h = 0, screen.height_in_pixels
-
-            self.dim = ScreenDimensions(
-                self.screen_width,
-                wa_y,
-                wa_h,
-                self.config.center_width,
-            )
-        except Exception as e:
-            logger.error(f"Error updating state: {e}")
-            logger.debug("", exc_info=True)
-            self.dim = None  # mark stale so next action is a no-op rather than using old geometry
+        self.dim = ScreenDimensions(
+            self.screen_width,
+            wa_y,
+            wa_h,
+            self.config.center_width,
+        )
 
     def execute_action(self, action: TileAction) -> None:
         """Entry point for a tiling action, called from the KeyGrabber event loop on the main thread."""
