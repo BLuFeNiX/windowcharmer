@@ -9,6 +9,19 @@ WindowCharmer is a three-column window tiler for ultra-wide monitors, designed f
 ```sh
 git clone git@github.com:BLuFeNiX/windowcharmer.git
 cd windowcharmer
+```
+
+**With [uv](https://docs.astral.sh/uv/getting-started/installation/)**:
+
+```sh
+uv tool install .
+```
+
+This installs the `windowcharmer` binary to `~/.local/bin/`. Ensure that directory is on your `PATH`.
+
+**With pip:**
+
+```sh
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -16,8 +29,15 @@ pip install -e .
 
 ## Usage
 
+With uv:
+
 ```sh
-cd windowcharmer
+windowcharmer
+```
+
+With pip (activate the venv first):
+
+```sh
 source .venv/bin/activate
 windowcharmer
 ```
@@ -95,7 +115,9 @@ This reads the current Super_L/Hyper_L keycodes, assigns them back to their cano
 
 ## Systemd User Service
 
-Copy the unit file and enable it:
+Choose the unit file that matches your install method.
+
+**With uv** — copy and enable:
 
 ```sh
 mkdir -p ~/.config/systemd/user
@@ -104,20 +126,21 @@ systemctl --user daemon-reload
 systemctl --user enable --now windowcharmer
 ```
 
+**With pip** — edit the unit file to set your clone path first, then copy and enable:
+
+```sh
+CLONE_DIR="$HOME/windowcharmer"  # adjust if you cloned elsewhere
+sed -i "s|/path/to/windowcharmer|$CLONE_DIR|" systemd/windowcharmer-venv.service
+mkdir -p ~/.config/systemd/user
+cp systemd/windowcharmer-venv.service ~/.config/systemd/user/windowcharmer.service
+systemctl --user daemon-reload
+systemctl --user enable --now windowcharmer
+```
+
 View logs:
 
 ```sh
 journalctl --user -u windowcharmer -f
-```
-
-Enable debug logging:
-
-```sh
-systemctl --user edit windowcharmer
-# Add:
-# [Service]
-# ExecStart=
-# ExecStart=%h/.local/bin/windowcharmer --debug
 ```
 
 ---

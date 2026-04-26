@@ -1,0 +1,19 @@
+[Unit]
+Description=WindowCharmer window tiling daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Replace /path/to/windowcharmer with the absolute path to your clone
+ExecStart=/path/to/windowcharmer/.venv/bin/windowcharmer
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+# To enable debug logging, override ExecStart via `systemctl --user edit windowcharmer`:
+# [Service]
+# ExecStart=
+# ExecStart=/path/to/windowcharmer/.venv/bin/windowcharmer --debug
+
+[Install]
+WantedBy=graphical-session.target
