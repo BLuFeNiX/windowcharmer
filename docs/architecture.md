@@ -20,7 +20,7 @@ The daemon runs four background threads plus the main thread:
 | Sleep detector | daemon thread | Polls wall-clock drift to detect suspend/resume |
 | Udev monitor | daemon thread | Watches `/dev/input/event*` for keyboard hotplug |
 
-`WindowManager` is not a thread — it is called from the main thread under a mutex.
+`WindowManager` is not a thread — it is called from the main thread (the KeyGrabber event loop), so its X11 connection has a single accessor.
 
 The udev and sleep monitors call `_schedule_rebind()` which debounces via `threading.Timer` before calling `KeyboardMapper.apply_super_hyper_swap()`.
 

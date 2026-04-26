@@ -1,5 +1,4 @@
 import logging
-import threading
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -55,7 +54,6 @@ _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
 class WindowManager:
     def __init__(self) -> None:
         """Initializes the WindowManager with its own X11 display connection."""
-        self._lock = threading.Lock()
         self._warned_missing_desktop: bool = False
         self.d: Display = DisplayPool.get_display("wm")
         self.atom = AtomCache(self.d)
@@ -97,30 +95,29 @@ class WindowManager:
             self.dim = None  # mark stale so next action is a no-op rather than using old geometry
 
     def execute_action(self, action: TileAction) -> None:
-        """Thread-safe entry point for a tiling action. State is read before grabbing the server."""
-        with self._lock:
-            try:
-                # Read state before grabbing the server to minimise the held window.
-                self._update_state()
-                win = self.get_active_window()
+        """Entry point for a tiling action, called from the KeyGrabber event loop on the main thread."""
+        try:
+            # Read state before grabbing the server to minimise the held window.
+            self._update_state()
+            win = self.get_active_window()
 
-                self.d.grab_server()
-                try:
-                    match action:
-                        case TileAction.BIGGER:
-                            self.resize_all_windows(1)
-                        case TileAction.SMALLER:
-                            self.resize_all_windows(-1)
-                        case _ if win:
-                            self._apply_tile_action(action, win)
-                finally:
-                    self.d.ungrab_server()
-                    self.d.flush()
-            except (ConnectionClosedError, DisplayConnectionError):
-                raise  # unrecoverable; propagate so the supervisor can restart
-            except Exception as e:
-                logger.error(f"Error executing action {action}: {e}")
-                logger.debug("", exc_info=True)
+            self.d.grab_server()
+            try:
+                match action:
+                    case TileAction.BIGGER:
+                        self.resize_all_windows(1)
+                    case TileAction.SMALLER:
+                        self.resize_all_windows(-1)
+                    case _ if win:
+                        self._apply_tile_action(action, win)
+            finally:
+                self.d.ungrab_server()
+                self.d.flush()
+        except (ConnectionClosedError, DisplayConnectionError):
+            raise  # unrecoverable; propagate so the supervisor can restart
+        except Exception as e:
+            logger.error(f"Error executing action {action}: {e}")
+            logger.debug("", exc_info=True)
 
     def _apply_tile_action(self, action: TileAction, win: Window) -> None:
         """Dispatch a tile action using the _TILE_SPEC table."""
