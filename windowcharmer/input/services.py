@@ -1,10 +1,10 @@
 import logging
 import threading
 from collections.abc import Callable
-from typing import Any
 
 import pyudev
 from Xlib.display import Display
+from Xlib.protocol import rq
 
 from ..x11.display_pool import DisplayPool
 from .key_monitor import KeyMonitor
@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
 class InputServices:
     """Manages background input monitoring: sleep/wake, keyboard hotplug, XRecord key events."""
 
-    def __init__(self, on_rebind_callback: Callable[[], None], on_key_event_callback: Callable[[Any], None]) -> None:
+    def __init__(
+        self,
+        on_rebind_callback: Callable[[], None],
+        on_key_event_callback: Callable[[rq.Event], None],
+    ) -> None:
         self.on_rebind = on_rebind_callback
         self.on_key_event = on_key_event_callback
         self._threads: list[threading.Thread] = []

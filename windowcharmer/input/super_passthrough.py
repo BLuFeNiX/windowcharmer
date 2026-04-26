@@ -1,9 +1,10 @@
 import logging
 import time
 from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from Xlib import X
+from Xlib.protocol import rq
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class SuperPassthroughTracker:
         """Update the tracked keycode after a MappingNotify."""
         self.super_keycode = new_keycode
 
-    def handle_event(self, event: Any) -> None:
+    def handle_event(self, event: rq.Event) -> None:
         """Process a KeyPress or KeyRelease event."""
         # Auto-reset stuck state: if Super has been "held" for too long, the release
         # was likely consumed by a focus change and we should clear the flag.

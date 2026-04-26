@@ -5,10 +5,10 @@ import signal
 import sys
 import threading
 from collections.abc import Callable
-from typing import Any
 
 from Xlib import X
 from Xlib.display import Display
+from Xlib.protocol import rq
 
 from . import __version__
 from .config import TileAction, load_keybindings
@@ -60,7 +60,7 @@ class WindowCharmerApp:
                 self.debounce_timer = threading.Timer(_REBIND_DEBOUNCE_SECONDS, self.mapper.apply_super_hyper_swap)
                 self.debounce_timer.start()
 
-    def _on_mapping_notify(self, event: Any) -> None:
+    def _on_mapping_notify(self, event: rq.Event) -> None:
         """Handle a MappingNotify event from the KeyGrabber."""
         if event.request != X.MappingKeyboard:
             logger.debug(f"MappingNotify for {event.request}, ignoring.")
@@ -69,7 +69,7 @@ class WindowCharmerApp:
         if self.mapper:
             self.mapper.apply_super_hyper_swap()
 
-    def _monitor_callback(self, event: Any) -> None:
+    def _monitor_callback(self, event: rq.Event) -> None:
         """Handle low-level XRecord events for keycode cache and Super passthrough."""
         if not self.mapper:
             return

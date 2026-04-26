@@ -16,10 +16,10 @@ def get_keycode(dpy: Display, keystring: str) -> int:
 
 
 class KeyMonitor:
-    def __init__(self, dpy: Display, callback: Callable[[Any], None]) -> None:
+    def __init__(self, dpy: Display, callback: Callable[[rq.Event], None]) -> None:
         self.dpy = dpy
         self.callback = callback
-        self.ctx: Any = None
+        self.ctx: Any = None  # record context handle; opaque to python-xlib callers
 
     def start(self) -> None:
         if not self.dpy.has_extension("RECORD"):
