@@ -99,7 +99,7 @@ Copy the unit file and enable it:
 
 ```sh
 mkdir -p ~/.config/systemd/user
-cp contrib/windowcharmer.service ~/.config/systemd/user/
+cp systemd/windowcharmer.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now windowcharmer
 ```
