@@ -19,10 +19,11 @@ make install-dev
 ## Running Checks
 
 ```sh
-make lint        # ruff check
-make typecheck   # mypy
-make test        # pytest
-make format      # ruff --fix (import sorting etc.)
+make lint          # ruff check
+make typecheck     # mypy
+make test          # pytest
+make format        # ruff format + ruff --fix (import sorting etc.)
+make format-check  # same checks CI runs (no writes)
 ```
 
 Or use `lint.sh` which creates its own isolated venv:
@@ -41,6 +42,9 @@ pre-commit install
 ```
 
 This runs ruff, mypy, and basic file hygiene checks on every commit.
+CI does **not** run pre-commit — it runs the same checks directly (`ruff check`,
+`ruff format --check`, `mypy`, `pytest`). Pre-commit is a local convenience only;
+the CI steps are the authoritative gate.
 
 ## Commit Messages
 

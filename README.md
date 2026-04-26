@@ -1,6 +1,6 @@
 # WindowCharmer
 
-WindowCharmer is a three-column window tiler for ultra-wide monitors, designed for X11 desktop environments. Actively tested on Cinnamon (Muffin); should work on GNOME (Mutter) and KDE (KWin) with no changes.
+WindowCharmer is a three-column window tiler for ultra-wide monitors, designed for X11 desktop environments. Actively tested on Cinnamon (Muffin); may work on GNOME (Mutter) and KDE (KWin) — [compatibility reports welcome](https://github.com/BLuFeNiX/windowcharmer/issues).
 
 > **X11 only.** Wayland does not support global key grabs or XTest — WindowCharmer cannot run on Wayland.
 

@@ -11,7 +11,7 @@ WindowCharmer is a daemon that:
 
 ## Thread Model
 
-The daemon runs five concurrent contexts:
+The daemon runs four background threads plus the main thread:
 
 | Context | Thread | Role |
 |---------|--------|------|
@@ -19,7 +19,8 @@ The daemon runs five concurrent contexts:
 | KeyMonitor | daemon thread | XRecord session — fires on every KeyPress/KeyRelease/MappingNotify |
 | Sleep detector | daemon thread | Polls wall-clock drift to detect suspend/resume |
 | Udev monitor | daemon thread | Watches `/dev/input/event*` for keyboard hotplug |
-| WindowManager | called from main | Performs X11 window operations under a mutex |
+
+`WindowManager` is not a thread — it is called from the main thread under a mutex.
 
 The udev and sleep monitors call `_schedule_rebind()` which debounces via `threading.Timer` before calling `KeyboardMapper.apply_super_hyper_swap()`.
 
