@@ -14,10 +14,8 @@ fi
 # source venv
 source "$VENV_DIR/bin/activate"
 
-# install windowcharmer
-if ! command -v windowcharmer; then
-    pip install -e .
-fi
+# install/sync windowcharmer (fast no-op when already up-to-date)
+pip install -q -e .
 
 # run daemon
 export PYTHONUNBUFFERED=1

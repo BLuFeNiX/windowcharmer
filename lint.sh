@@ -3,14 +3,13 @@ set -e
 
 cd "$(dirname "$0")"
 
-VENV=".test_venv"
+VENV=".venv"
 
 if [ ! -d "$VENV" ]; then
     echo "Creating virtual environment '$VENV'..."
     python3 -m venv "$VENV"
-    echo "Installing requirements..."
-    $VENV/bin/pip install -q -e ".[dev]"
 fi
+$VENV/bin/pip install -q -e ".[dev]"
 
 echo "Running ruff check..."
 $VENV/bin/ruff check windowcharmer/

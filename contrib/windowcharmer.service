@@ -5,6 +5,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
+WorkingDirectory=%h
 ExecStart=%h/.local/bin/windowcharmer
 Restart=on-failure
 RestartSec=3
