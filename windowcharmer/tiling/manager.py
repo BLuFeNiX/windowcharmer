@@ -34,10 +34,17 @@ class _ZoneSpec(NamedTuple):
     needs_center: bool = False
 
 
+def _remap_zone_no_center(zone: str) -> str:
+    """Map center-spanning zones to their side-only equivalents when center_width == 0."""
+    return {"left-center": "left", "right-center": "right"}.get(zone, zone.replace("center", "left"))
+
+
 # fmt: off
 _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
-    TileAction.LEFT:          _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,   d.h_full), 1, 0),
-    TileAction.RIGHT:         _ZoneSpec(lambda d: (d.x_right,  d.y_top,    d.w_side,   d.h_full), 1, 0),
+    TileAction.LEFT:          _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,               d.h_full), 1, 0),
+    TileAction.LEFT_CENTER:   _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side + d.w_center,  d.h_full), 1, 0, True),
+    TileAction.RIGHT:         _ZoneSpec(lambda d: (d.x_right,  d.y_top,    d.w_side,               d.h_full), 1, 0),
+    TileAction.RIGHT_CENTER:  _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center + d.w_side,  d.h_full), 1, 0, True),
     TileAction.CENTER:        _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_full), 1, 0, True),
     TileAction.TOP_LEFT:      _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,   d.h_half), 0, 0),
     TileAction.BOTTOM_LEFT:   _ZoneSpec(lambda d: (d.x_left,   d.y_bottom, d.w_side,   d.h_half), 0, 0),
@@ -87,12 +94,32 @@ class WindowManager:
             self.config.center_width,
         )
 
+    def _resolve_tile_cycle(self, action: TileAction, win: Window) -> TileAction:
+        """Cycle LEFT↔LEFT_CENTER and RIGHT↔RIGHT_CENTER based on the window's current zone."""
+        if self.config.center_width == 0:
+            return action
+        zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
+        if action == TileAction.LEFT:
+            if zone == "left":
+                return TileAction.LEFT_CENTER
+            if zone == "left-center":
+                return TileAction.LEFT
+        elif action == TileAction.RIGHT:
+            if zone == "right":
+                return TileAction.RIGHT_CENTER
+            if zone == "right-center":
+                return TileAction.RIGHT
+        return action
+
     def execute_action(self, action: TileAction) -> None:
         """Entry point for a tiling action, called from the KeyGrabber event loop on the main thread."""
         try:
             # Read state before grabbing the server to minimise the held window.
             self._update_state()
             win = self.get_active_window()
+
+            if win and action in (TileAction.LEFT, TileAction.RIGHT):
+                action = self._resolve_tile_cycle(action, win)
 
             # Tile actions can be animated via Cinnamon's compositor. This must
             # run outside grab_server because Cinnamon is a separate X11 client.
@@ -159,7 +186,7 @@ class WindowManager:
         targets = []
         for win, zone in window_zones:
             if next_idx == 0:
-                zone = zone.replace("center", "left")
+                zone = _remap_zone_no_center(zone)
             try:
                 action = TileAction(zone)
             except ValueError:
@@ -319,7 +346,7 @@ class WindowManager:
 
         for win, zone in window_zones:
             if self.config.ratio_idx == 0:
-                zone = zone.replace("center", "left")
+                zone = _remap_zone_no_center(zone)
             try:
                 self._apply_tile_action(TileAction(zone), win)
             except ValueError:

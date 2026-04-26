@@ -72,5 +72,10 @@ def determine_tile_zone(
             h_pos = "center"
     elif within(w, dim.w_center) and within(x, dim.x_center):
         h_pos = "center"
+    elif within(w, dim.w_side + dim.w_center):
+        if within(x, dim.x_left):
+            h_pos = "left-center"
+        elif within(x, dim.x_center):
+            h_pos = "right-center"
 
     return f"{v_pos}-{h_pos}".replace("full-", "")

@@ -93,3 +93,71 @@ def test_execute_action_logs_and_returns_on_update_failure(wm: WindowManager, ca
     wm.d.screen.side_effect = RuntimeError("X gone")
     wm.execute_action(TileAction.LEFT)  # must not raise
     assert any("Error executing action" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# _resolve_tile_cycle
+# ---------------------------------------------------------------------------
+
+
+def _make_wm_with_dim() -> WindowManager:
+    """WindowManager with a real ScreenDimensions (1920×1080, 40px panel, 768px center)."""
+    from windowcharmer.config.dimensions import ScreenDimensions
+
+    wm = _make_wm()
+    wm.dim = ScreenDimensions(1920, 40, 1000, 768)
+    wm.config._desktop_ratios = {0: 2}  # ratio_idx 2 → non-zero center
+    return wm
+
+
+def _mock_win_in_zone(zone_str: str) -> MagicMock:
+    """Return a mock window whose determine_tile_zone result is patched to zone_str."""
+    win = MagicMock()
+    win._zone_str = zone_str
+    return win
+
+
+@pytest.mark.parametrize(
+    "start_zone, action_in, action_out",
+    [
+        # Left cycling
+        ("unknown", "left", "left"),
+        ("left", "left", "left-center"),
+        ("left-center", "left", "left"),
+        # Right cycling
+        ("unknown", "right", "right"),
+        ("right", "right", "right-center"),
+        ("right-center", "right", "right"),
+        # Unrelated actions pass through unchanged
+        ("left", "center", "center"),
+        ("right", "max", "max"),
+    ],
+)
+def test_resolve_tile_cycle(start_zone: str, action_in: str, action_out: str) -> None:
+    from windowcharmer.config.actions import TileAction
+
+    wm = _make_wm_with_dim()
+    win = MagicMock()
+
+    with (
+        patch("windowcharmer.tiling.manager.determine_tile_zone", return_value=start_zone),
+        patch.object(wm, "is_window_maximized_vertically", return_value=False),
+    ):
+        result = wm._resolve_tile_cycle(TileAction(action_in), win)
+
+    assert result == TileAction(action_out)
+
+
+def test_resolve_tile_cycle_skipped_when_no_center(wm: WindowManager) -> None:
+    """Cycling must not trigger when center_width == 0 (two-column mode)."""
+    from windowcharmer.config.dimensions import ScreenDimensions
+    from windowcharmer.config.actions import TileAction
+
+    wm.dim = ScreenDimensions(1920, 40, 1000, 0)  # center_width = 0
+    wm.config.center_width = 0
+    win = MagicMock()
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        result = wm._resolve_tile_cycle(TileAction.LEFT, win)
+
+    assert result == TileAction.LEFT

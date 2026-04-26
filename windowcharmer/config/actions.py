@@ -3,7 +3,9 @@ from enum import StrEnum
 
 class TileAction(StrEnum):
     LEFT = "left"
+    LEFT_CENTER = "left-center"
     RIGHT = "right"
+    RIGHT_CENTER = "right-center"
     CENTER = "center"
     TOP_LEFT = "top-left"
     BOTTOM_LEFT = "bottom-left"
