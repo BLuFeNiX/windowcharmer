@@ -20,17 +20,20 @@ def get_default_keybindings() -> dict[str, TileAction]:
 
         'KP_Home':      TileAction.TOP_LEFT,
         'KP_Up':        TileAction.TOP_CENTER,
-        'KP_Page_Up':   TileAction.TOP_RIGHT,   # alias for KP_Prior on some keyboards
+        'KP_Page_Up':   TileAction.TOP_RIGHT,
         'KP_Left':      TileAction.LEFT,
         'KP_Begin':     TileAction.CENTER,
         'KP_Right':     TileAction.RIGHT,
         'KP_End':       TileAction.BOTTOM_LEFT,
         'KP_Down':      TileAction.BOTTOM_CENTER,
-        'KP_Page_Down': TileAction.BOTTOM_RIGHT, # alias for KP_Next on some keyboards
+        'KP_Page_Down': TileAction.BOTTOM_RIGHT,
         'KP_Insert':    TileAction.RESTORE,
 
-        'KP_Prior':     TileAction.TOP_RIGHT,    # same target as KP_Page_Up (legacy alias)
-        'KP_Next':      TileAction.BOTTOM_RIGHT, # same target as KP_Page_Down (legacy alias)
+        # KP_Prior / KP_Next are the historical keysym names of KP_Page_Up /
+        # KP_Page_Down. Some X servers register only one of the two names;
+        # binding both keeps the numpad working in those cases.
+        'KP_Prior':     TileAction.TOP_RIGHT,
+        'KP_Next':      TileAction.BOTTOM_RIGHT,
 
         'KP_Add':       TileAction.BIGGER,
         'KP_Subtract':  TileAction.SMALLER,
