@@ -52,10 +52,17 @@ class WindowCharmerApp:
             on_mapping_notify=self._on_mapping_notify,
         )
 
+    def stop(self) -> None:
+        """Request a clean shutdown. Safe to call from a signal handler
+        (KeyGrabber.stop() sets a flag and writes a single non-blocking byte
+        to its wakeup pipe).
+        """
+        self.grabber.stop()
+
     def do_action(self, action: TileAction) -> None:
         """Execute a window manager action (tile, center, etc.)"""
         if action == TileAction.EXIT:
-            self.grabber.stop()
+            self.stop()
             return
         self.wm.execute_action(action)
 
