@@ -57,6 +57,8 @@ class InputServices:
                 monitor.start()
             except OSError as e:
                 logger.error("KeyMonitor failed to start: %s. Super-key passthrough will not work.", e)
+            except Exception:
+                logger.exception("KeyMonitor crashed unexpectedly. Super-key passthrough will not work.")
 
         t = threading.Thread(target=monitor_wrapper, daemon=True)
         t.start()
