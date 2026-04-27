@@ -289,7 +289,7 @@ class WindowManager:
     def get_active_desktop(self) -> int:
         """Returns the index of the current virtual desktop."""
         val = get_property_value(self.root, self.atom.current_desktop)
-        if val is None:
+        if not val:
             if not self._warned_missing_desktop:
                 logger.warning("_NET_CURRENT_DESKTOP not set — WM may not be EWMH-compliant; defaulting to desktop 0")
                 self._warned_missing_desktop = True
