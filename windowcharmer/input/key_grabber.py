@@ -94,8 +94,8 @@ class KeyGrabber:
         Returns normally when stop() is called.
         """
         self._wake_r, self._wake_w = os.pipe()
-        os.set_blocking(self._wake_w, False)
         try:
+            os.set_blocking(self._wake_w, False)
             for attempt in (1, 2):
                 self.grab_keys()
                 try:
