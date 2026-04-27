@@ -241,7 +241,7 @@ class WindowManager:
         gtk_fe = self.get_gtk_frame_extents(window)
 
         d_l = d_r = d_t = d_b = 0
-        if net_fe:
+        if net_fe and len(net_fe) >= 4:
             d_l, d_r, d_t, d_b = net_fe[0], net_fe[1], net_fe[2], net_fe[3]
 
         if gtk_fe:
