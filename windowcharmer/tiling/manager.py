@@ -170,13 +170,12 @@ class WindowManager:
 
             self.d.grab_server()
             try:
-                match action:
-                    case TileAction.BIGGER:
-                        self.resize_all_windows(1)
-                    case TileAction.SMALLER:
-                        self.resize_all_windows(-1)
-                    case _ if win:
-                        self._apply_tile_action(action, win)
+                if action == TileAction.BIGGER:
+                    self.resize_all_windows(1)
+                elif action == TileAction.SMALLER:
+                    self.resize_all_windows(-1)
+                elif win:
+                    self._apply_tile_action(action, win)
             finally:
                 self.d.ungrab_server()
                 self.d.flush()
