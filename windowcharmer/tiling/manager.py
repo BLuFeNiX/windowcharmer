@@ -93,8 +93,7 @@ class WindowManager:
         self.screen_width = screen.width_in_pixels
 
         active_desktop = self.get_active_desktop()
-        self.config.update_screen_width(self.screen_width)
-        self.config.set_active_desktop(active_desktop)
+        self.config.set_state(self.screen_width, active_desktop)
 
         workarea = get_property_value(self.root, self.atom.workarea)
         if workarea:

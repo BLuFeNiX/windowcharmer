@@ -40,6 +40,14 @@ class Config:
             self.active_desktop = desktop
             self.reload()
 
+    def set_state(self, width: int, desktop: int) -> None:
+        """Update screen width and active desktop in a single reload pass."""
+        if self.screen_width == width and self.active_desktop == desktop:
+            return
+        self.screen_width = width
+        self.active_desktop = desktop
+        self.reload()
+
     def reload(self) -> None:
         """Recalculate dimensions based on current state."""
         self.ratio_idx = self._desktop_ratios.get(self.active_desktop, self._DEFAULT_RATIO_IDX)

@@ -56,3 +56,35 @@ def test_center_width_computed() -> None:
     cfg = Config(2560)
     expected = int(2560 * cfg.supported_ratios[cfg.ratio_idx])
     assert cfg.center_width == expected
+
+
+def test_set_state_reloads_once_per_change() -> None:
+    cfg = Config(1920)
+    calls = 0
+    real_reload = cfg.reload
+
+    def counting_reload() -> None:
+        nonlocal calls
+        calls += 1
+        real_reload()
+
+    cfg.reload = counting_reload  # type: ignore[method-assign]
+    cfg.set_state(2560, 1)
+    assert calls == 1
+    assert cfg.screen_width == 2560
+    assert cfg.active_desktop == 1
+
+
+def test_set_state_noop_when_unchanged() -> None:
+    cfg = Config(1920)
+    calls = 0
+    real_reload = cfg.reload
+
+    def counting_reload() -> None:
+        nonlocal calls
+        calls += 1
+        real_reload()
+
+    cfg.reload = counting_reload  # type: ignore[method-assign]
+    cfg.set_state(1920, 0)
+    assert calls == 0
