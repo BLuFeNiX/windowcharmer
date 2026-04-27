@@ -117,8 +117,6 @@ class WindowCharmerApp:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
     parser = argparse.ArgumentParser(description="WindowCharmer Daemon")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
@@ -126,6 +124,11 @@ def main() -> None:
     parser.add_argument("--fix-keymap", action="store_true", help="Restore canonical Super_L/Hyper_L mapping and exit")
 
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    )
 
     if args.fix_keymap:
         try:
@@ -137,9 +140,6 @@ def main() -> None:
         finally:
             DisplayPool.close_all()
         sys.exit(0)
-
-    if args.debug:
-        logging.getLogger("windowcharmer").setLevel(logging.DEBUG)
 
     app = WindowCharmerApp(no_animate=args.no_animate)
     # Install AFTER construction so the handler can reference app.grabber.
