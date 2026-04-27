@@ -64,7 +64,16 @@ class InputServices:
         logger.debug("Key monitor started")
 
     def stop_all(self) -> None:
-        """Signal all monitors to stop and clean up."""
+        """Signal all monitors to stop and wait for them to exit.
+
+        Joining ensures monitor callbacks (which may touch the mapper or
+        other shared resources) don't fire after the caller proceeds to
+        tear those resources down.
+        """
         self._stop_event.set()
         if self._key_monitor:
             self._key_monitor.stop()
+        for t in self._threads:
+            t.join(timeout=2.0)
+            if t.is_alive():
+                logger.warning(f"Input monitor thread {t.name} did not exit within timeout")
