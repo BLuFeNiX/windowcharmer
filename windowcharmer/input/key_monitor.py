@@ -80,12 +80,15 @@ class KeyMonitor:
         try:
             stop_dpy = Display()
         except Exception as e:
-            logger.debug("KeyMonitor.stop: failed to open display: %s", e)
+            # Shutdown-path failure: the monitor thread will stay parked in
+            # record_enable_context until the process exits. Surface at WARNING
+            # so it's visible in logs, not buried at DEBUG.
+            logger.warning("KeyMonitor.stop: failed to open display, monitor thread will not exit cleanly: %s", e)
             return
         try:
             stop_dpy.record_disable_context(ctx)
             stop_dpy.flush()
         except Exception as e:
-            logger.debug("KeyMonitor.stop: failed to disable record context: %s", e)
+            logger.warning("KeyMonitor.stop: failed to disable record context: %s", e)
         finally:
             stop_dpy.close()
