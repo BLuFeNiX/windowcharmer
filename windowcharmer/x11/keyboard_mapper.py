@@ -139,15 +139,16 @@ class KeyboardMapper:
     def cleanup(self) -> None:
         """Restore the original keysym assignments."""
         logger.info("Restoring keyboard mapping...")
-        try:
-            if self.super_l_orig is None or self.hyper_l_orig is None:
-                logger.warning(
-                    "Original key mappings unavailable — keyboard mapping not restored (backup failed at startup)."
-                )
-                return
-            self._dpy.change_keyboard_mapping(self.super_l_keycode, self.super_l_orig)
-            self._dpy.change_keyboard_mapping(self.hyper_l_keycode, self.hyper_l_orig)
-            self._dpy.sync()
-        except Exception as e:
-            logger.warning(f"Error restoring keyboard mapping: {e}")
-            logger.debug("", exc_info=True)
+        with self._lock:
+            try:
+                if self.super_l_orig is None or self.hyper_l_orig is None:
+                    logger.warning(
+                        "Original key mappings unavailable — keyboard mapping not restored (backup failed at startup)."
+                    )
+                    return
+                self._dpy.change_keyboard_mapping(self.super_l_keycode, self.super_l_orig)
+                self._dpy.change_keyboard_mapping(self.hyper_l_keycode, self.hyper_l_orig)
+                self._dpy.sync()
+            except Exception as e:
+                logger.warning(f"Error restoring keyboard mapping: {e}")
+                logger.debug("", exc_info=True)
