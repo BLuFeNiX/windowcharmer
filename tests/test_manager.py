@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from windowcharmer.tiling.manager import FrameExtents, WindowManager
+from windowcharmer.tiling.manager import FrameExtents, WindowManager, _remap_zone_no_center
 
 
 def _make_wm() -> WindowManager:
@@ -211,6 +211,33 @@ def test_resize_all_windows_skips_invalid_zone() -> None:
         wm.resize_all_windows(1)  # must not raise
 
     apply_action.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _remap_zone_no_center
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "zone, expected",
+    [
+        ("left-center", "left"),
+        ("right-center", "right"),
+        ("center", "left"),
+        ("top-center", "top-left"),
+        ("bottom-center", "bottom-left"),
+        # Side-only zones pass through unchanged
+        ("left", "left"),
+        ("right", "right"),
+        ("top-left", "top-left"),
+        ("bottom-right", "bottom-right"),
+        # Non-tileable / unknown zones pass through
+        ("unknown", "unknown"),
+        ("top-left-center", "top-left-center"),
+    ],
+)
+def test_remap_zone_no_center(zone: str, expected: str) -> None:
+    assert _remap_zone_no_center(zone) == expected
 
 
 def test_resize_all_windows_includes_sticky_window() -> None:

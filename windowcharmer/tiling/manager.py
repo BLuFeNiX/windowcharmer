@@ -37,9 +37,21 @@ class _ZoneSpec(NamedTuple):
     needs_center: bool = False
 
 
+_REMAP_NO_CENTER: dict[str, str] = {
+    "left-center": "left",
+    "right-center": "right",
+    "center": "left",
+    "top-center": "top-left",
+    "bottom-center": "bottom-left",
+}
+
+
 def _remap_zone_no_center(zone: str) -> str:
-    """Map center-spanning zones to their side-only equivalents when center_width == 0."""
-    return {"left-center": "left", "right-center": "right"}.get(zone, zone.replace("center", "left"))
+    """Map center-spanning zones to their side-only equivalents when center_width == 0.
+
+    Center-anchored zones collapse to the left column; non-center zones pass through.
+    """
+    return _REMAP_NO_CENTER.get(zone, zone)
 
 
 # fmt: off
