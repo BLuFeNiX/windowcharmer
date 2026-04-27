@@ -247,6 +247,7 @@ class WindowManager:
         if not self.dim:
             return
         if spec.needs_center and self.config.center_width == 0:
+            logger.warning("Action %s requires the center column; ignoring (center width is 0)", action.value)
             return
 
         x, y, w, h = spec.geom(self.dim)
