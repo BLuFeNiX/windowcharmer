@@ -231,11 +231,11 @@ def test_resize_all_windows_skips_invalid_zone() -> None:
         patch.object(wm, "is_window_maximized_vertically", return_value=False),
         patch.object(wm, "_update_state"),
         patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="top-left-center"),
-        patch.object(wm, "_apply_tile_action") as apply_action,
+        patch.object(wm, "move_and_resize") as move_and_resize,
     ):
         wm.resize_all_windows(1)  # must not raise
 
-    apply_action.assert_not_called()
+    move_and_resize.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +277,11 @@ def test_resize_all_windows_includes_sticky_window() -> None:
         patch.object(wm, "is_window_maximized_vertically", return_value=False),
         patch.object(wm, "_update_state"),
         patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"),
-        patch.object(wm, "_apply_tile_action") as apply_action,
+        patch.object(wm, "move_and_resize") as move_and_resize,
     ):
         wm.resize_all_windows(1)
 
-    apply_action.assert_called_once()
+    move_and_resize.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

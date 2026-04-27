@@ -67,7 +67,8 @@ def _resolve_zone_actions(
 ) -> Iterator[tuple[Window, TileAction]]:
     """Yield (win, TileAction) pairs, applying the no-center remap when has_center is False.
 
-    Skips zones that don't correspond to a TileAction (e.g. 'top-left-center').
+    Skips zones that don't correspond to a TileAction (e.g. 'top-left-center'
+    — a half-height window spanning side+center, reachable via manual drag).
     """
     for win, zone in window_zones:
         if not has_center:
@@ -75,6 +76,7 @@ def _resolve_zone_actions(
         try:
             yield win, TileAction(zone)
         except ValueError:
+            logger.debug("Skipping window in non-tileable zone %r", zone)
             continue
 
 
@@ -218,14 +220,10 @@ class WindowManager:
         next_center_width = self.config.peek_center_width(step)
         next_dim = ScreenDimensions(self.dim.wa_x, self.dim.wa_y, self.dim.wa_w, self.dim.wa_h, next_center_width)
 
-        targets = []
-        for win, action in _resolve_zone_actions(window_zones, has_center=next_center_width > 0):
-            spec = _TILE_SPEC.get(action)
-            if not spec or spec.geom is None or (spec.needs_center and next_center_width == 0):
-                continue
-            x, y, w, h = spec.geom(next_dim)
-            targets.append((win.id, x, y, w, h))
-
+        targets = [
+            (win.id, x, y, w, h)
+            for win, x, y, w, h in self._resolve_tile_targets(window_zones, next_dim, has_center=next_center_width > 0)
+        ]
         if not targets:
             return False
 
@@ -236,6 +234,22 @@ class WindowManager:
         self.config.next_ratio(step)
         self._update_state()
         return True
+
+    def _resolve_tile_targets(
+        self, window_zones: list[tuple[Window, str]], dim: ScreenDimensions, has_center: bool
+    ) -> Iterator[tuple[Window, int, int, int, int]]:
+        """Map (window, zone) pairs to (window, x, y, w, h) targets for the given layout.
+
+        Skips windows whose resolved action has no geometry (MAX/RESTORE
+        can't appear from zone strings, but the type allows it) and those
+        that need the center column when it's absent.
+        """
+        for win, action in _resolve_zone_actions(window_zones, has_center=has_center):
+            spec = _TILE_SPEC.get(action)
+            if not spec or spec.geom is None or (spec.needs_center and not has_center):
+                continue
+            x, y, w, h = spec.geom(dim)
+            yield win, x, y, w, h
 
     def _apply_tile_action(self, action: TileAction, win: Window) -> None:
         """Dispatch a tile action using the _TILE_SPEC table."""
@@ -362,13 +376,20 @@ class WindowManager:
 
     def resize_all_windows(self, step: int) -> None:
         """Adjusts the center-column ratio for all tiled windows on the active desktop."""
+        # Snapshot zones BEFORE committing the new ratio: zone detection
+        # matches windows against their current positions, but tile geometry
+        # is computed against the post-commit layout.
         window_zones = self._collect_zoned_windows()
 
         self.config.next_ratio(step)
         self._update_state()
+        if not self.dim:
+            return
 
-        for win, action in _resolve_zone_actions(window_zones, has_center=self.config.center_width > 0):
-            self._apply_tile_action(action, win)
+        for win, x, y, w, h in self._resolve_tile_targets(
+            window_zones, self.dim, has_center=self.config.center_width > 0
+        ):
+            self.move_and_resize(win, x, y, w, h)
 
     def _collect_zoned_windows(self) -> list[tuple[Window, str]]:
         """Return (window, zone) pairs for all tiled windows on the active desktop.
