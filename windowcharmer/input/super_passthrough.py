@@ -29,8 +29,16 @@ class SuperPassthroughTracker:
         self._super_press_time: float = 0.0
 
     def update_keycode(self, new_keycode: int) -> None:
-        """Update the tracked keycode after a MappingNotify."""
+        """Update the tracked keycode after a MappingNotify.
+
+        Resets pressed state because the matching KeyRelease will now arrive
+        on the new keycode — leaving super_pressed=True against the old
+        keycode would make every subsequent key look like "pressed while
+        Super held" until the timeout elapses.
+        """
         self.super_keycode = new_keycode
+        self.super_pressed = False
+        self.key_pressed_while_super_down = False
 
     def handle_event(self, event: rq.Event) -> None:
         """Process a KeyPress or KeyRelease event."""

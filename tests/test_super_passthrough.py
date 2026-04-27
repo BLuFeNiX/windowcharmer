@@ -53,6 +53,28 @@ def test_update_keycode_changes_tracked_key() -> None:
     cb.assert_called_once()
 
 
+def test_update_keycode_clears_in_flight_press_state() -> None:
+    """Regression: if Super is held when the keymap rebinds, the matching
+    KeyRelease arrives on the new keycode and the old super_pressed=True
+    would mis-classify any subsequent key as 'pressed while Super held',
+    suppressing the menu indefinitely.
+    """
+    tracker, cb = _tracker()
+    tracker.handle_event(_Ev(X.KeyPress, _SUPER))
+    assert tracker.super_pressed is True
+
+    # Keymap rebinds while Super is still physically held.
+    tracker.update_keycode(200)
+    assert tracker.super_pressed is False
+    assert tracker.key_pressed_while_super_down is False
+
+    # An unrelated key press now must not poison state for the next tap.
+    tracker.handle_event(_Ev(X.KeyPress, 36))
+    tracker.handle_event(_Ev(X.KeyPress, 200))
+    tracker.handle_event(_Ev(X.KeyRelease, 200))
+    cb.assert_called_once()
+
+
 def test_unrelated_key_events_ignored() -> None:
     tracker, cb = _tracker()
     tracker.handle_event(_Ev(X.KeyPress, 36))
