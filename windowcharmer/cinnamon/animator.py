@@ -11,7 +11,10 @@ ANIMATION_DURATION_MS = 180
 _PROBE_COOLDOWN_SECONDS = 30.0
 
 
-_ANIMATE_BODY = """\
+_ANIMATE_FN = """\
+function _wcAnimate(actor, tx, ty, tw, th, dur) {
+    let mw = actor.meta_window;
+    let Main = imports.ui.main;
     let fr = mw.get_frame_rect();
     let shadowX = actor.x - fr.x, shadowY = actor.y - fr.y;
     let prevX = actor.x, prevY = actor.y;
@@ -36,19 +39,17 @@ _ANIMATE_BODY = """\
         translation_y: 0,
         duration: dur,
         mode: 3
-    });"""
+    });
+}"""
 
 
 def _make_script(xid: int, tx: int, ty: int, tw: int, th: int) -> str:
     return f"""\
 (function() {{
-    let tx = {tx}, ty = {ty}, tw = {tw}, th = {th};
-    let dur = {ANIMATION_DURATION_MS};
+{_ANIMATE_FN}
     let actor = global.get_window_actors().find(a => a.meta_window.get_xwindow() === {xid});
     if (!actor) return 0;
-    let mw = actor.meta_window;
-    let Main = imports.ui.main;
-{_ANIMATE_BODY}
+    _wcAnimate(actor, {tx}, {ty}, {tw}, {th}, {ANIMATION_DURATION_MS});
     return 1;
 }})()"""
 
@@ -57,16 +58,13 @@ def _make_batch_script(targets: list[tuple[int, int, int, int, int]]) -> str:
     entries = ", ".join(f"{{xid:{xid},tx:{tx},ty:{ty},tw:{tw},th:{th}}}" for xid, tx, ty, tw, th in targets)
     return f"""\
 (function() {{
+{_ANIMATE_FN}
     let windows = [{entries}];
-    let dur = {ANIMATION_DURATION_MS};
     let actors = global.get_window_actors();
-    let Main = imports.ui.main;
     for (let w of windows) {{
         let actor = actors.find(a => a.meta_window.get_xwindow() === w.xid);
         if (!actor) continue;
-        let mw = actor.meta_window;
-        let tx = w.tx, ty = w.ty, tw = w.tw, th = w.th;
-{_ANIMATE_BODY}
+        _wcAnimate(actor, w.tx, w.ty, w.tw, w.th, {ANIMATION_DURATION_MS});
     }}
     return 1;
 }})()"""
