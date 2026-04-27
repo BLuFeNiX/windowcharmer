@@ -241,7 +241,7 @@ class WindowManager:
         """Dispatch a tile action using the _TILE_SPEC table."""
         spec = _TILE_SPEC.get(action)
         if spec is None:
-            logger.warning(f"Unhandled tile action: {action}")
+            logger.warning("Unhandled tile action: %s", action)
             return
 
         if spec.geom is None:

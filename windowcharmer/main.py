@@ -73,7 +73,7 @@ class WindowCharmerApp:
     def _on_mapping_notify(self, event: rq.Event) -> None:
         """Handle a MappingNotify event from the KeyGrabber."""
         if event.request != X.MappingKeyboard:
-            logger.debug(f"MappingNotify for {event.request}, ignoring.")
+            logger.debug("MappingNotify for %s, ignoring.", event.request)
             return
         logger.debug("MappingNotify for Keyboard, applying swap...")
         self.mapper.apply_super_hyper_swap()
@@ -149,7 +149,7 @@ def main() -> None:
     try:
         app.run_daemon()
     except KeyGrabberError as e:
-        logger.error(f"Daemon stopped: {e}")
+        logger.error("Daemon stopped: %s", e)
         logger.debug("", exc_info=True)
         sys.exit(1)
 

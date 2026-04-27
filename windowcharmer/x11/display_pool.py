@@ -36,5 +36,5 @@ class DisplayPool:
                 try:
                     dpy.close()
                 except Exception as e:
-                    logger.warning(f"Error closing display {name!r}: {e}")
+                    logger.warning("Error closing display %r: %s", name, e)
             cls._displays.clear()

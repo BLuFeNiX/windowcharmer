@@ -56,7 +56,7 @@ class InputServices:
             try:
                 monitor.start()
             except OSError as e:
-                logger.error(f"KeyMonitor failed to start: {e}. Super-key passthrough will not work.")
+                logger.error("KeyMonitor failed to start: %s. Super-key passthrough will not work.", e)
 
         t = threading.Thread(target=monitor_wrapper, daemon=True)
         t.start()
@@ -76,4 +76,4 @@ class InputServices:
         for t in self._threads:
             t.join(timeout=2.0)
             if t.is_alive():
-                logger.warning(f"Input monitor thread {t.name} did not exit within timeout")
+                logger.warning("Input monitor thread %s did not exit within timeout", t.name)

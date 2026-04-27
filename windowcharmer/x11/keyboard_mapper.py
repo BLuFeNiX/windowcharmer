@@ -72,7 +72,7 @@ class KeyboardMapper:
                 self.super_l_orig = self._dpy.get_keyboard_mapping(self._canon_super_kc, 1)
                 self.hyper_l_orig = self._dpy.get_keyboard_mapping(self._canon_hyper_kc, 1)
         except Exception as e:
-            logger.error(f"Error backing up key mappings: {e}")
+            logger.error("Error backing up key mappings: %s", e)
             logger.debug("", exc_info=True)
 
     def _refresh_keycodes_locked(self) -> None:
@@ -140,7 +140,7 @@ class KeyboardMapper:
                 self._change_keyboard_mapping(self._canon_hyper_kc, self.super_l_keysym)
                 self._dpy.sync()
             except Exception as e:
-                logger.error(f"Error rebinding keys: {e}")
+                logger.error("Error rebinding keys: %s", e)
                 logger.debug("", exc_info=True)
 
     def force_canonical(self) -> bool:
@@ -167,7 +167,7 @@ class KeyboardMapper:
                 xtest.fake_input(self._dpy, X.KeyRelease, self.hyper_l_keycode)
                 self._dpy.flush()
             except Exception as e:
-                logger.error(f"Error simulating key: {e}")
+                logger.error("Error simulating key: %s", e)
                 logger.debug("", exc_info=True)
 
     def _change_keyboard_mapping(self, keycode: int, new_keysym: int) -> None:
@@ -187,5 +187,5 @@ class KeyboardMapper:
                 self._dpy.change_keyboard_mapping(self._canon_hyper_kc, self.hyper_l_orig)
                 self._dpy.sync()
             except Exception as e:
-                logger.warning(f"Error restoring keyboard mapping: {e}")
+                logger.warning("Error restoring keyboard mapping: %s", e)
                 logger.debug("", exc_info=True)

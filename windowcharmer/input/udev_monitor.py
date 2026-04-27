@@ -20,7 +20,7 @@ class UdevKeyboardMonitor:
             monitor = pyudev.Monitor.from_netlink(context)
             monitor.filter_by(subsystem="input")
         except Exception as e:
-            logger.error(f"Udev setup failed: {e}. Keyboard hotplug detection is disabled.")
+            logger.error("Udev setup failed: %s. Keyboard hotplug detection is disabled.", e)
             logger.debug("", exc_info=True)
             return
 
@@ -37,5 +37,5 @@ class UdevKeyboardMonitor:
                     logger.info("Keyboard added, triggering rebind...")
                     self._callback()
         except Exception as e:
-            logger.error(f"Udev monitor loop failed: {e}. Keyboard hotplug detection is disabled.")
+            logger.error("Udev monitor loop failed: %s. Keyboard hotplug detection is disabled.", e)
             logger.debug("", exc_info=True)

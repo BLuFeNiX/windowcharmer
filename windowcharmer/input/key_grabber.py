@@ -58,7 +58,7 @@ class KeyGrabber:
                 self.keycode_map[keycode] = action
                 self._grab_key_ignore_locks(root, keycode)
             else:
-                logger.warning(f"Unknown key name {key_name!r} — skipping grab")
+                logger.warning("Unknown key name %r — skipping grab", key_name)
 
     def _grab_key_ignore_locks(self, window: Window, keycode: int) -> None:
         for mod in self.IGNORED_MODIFIERS:
@@ -76,7 +76,7 @@ class KeyGrabber:
             try:
                 window.ungrab_key(keycode, self.modifier | mod)
             except Exception as e:
-                logger.debug(f"Failed to ungrab keycode {keycode} mod {mod}: {e}")
+                logger.debug("Failed to ungrab keycode %d mod %d: %s", keycode, mod, e)
 
     def stop(self) -> None:
         """Request a clean exit from start(). Safe to call from a signal handler
@@ -105,8 +105,10 @@ class KeyGrabber:
                     self.ungrab_keys()
                     if attempt < 2:
                         logger.warning(
-                            f"KeyGrabber: BadAccess — another client may own a grab. "
-                            f"Retrying in {_BAD_ACCESS_RETRY_DELAY:.0f}s... ({e})"
+                            "KeyGrabber: BadAccess — another client may own a grab. "
+                            "Retrying in %.0fs... (%s)",
+                            _BAD_ACCESS_RETRY_DELAY,
+                            e,
                         )
                         time.sleep(_BAD_ACCESS_RETRY_DELAY)
                         continue
@@ -146,7 +148,7 @@ class KeyGrabber:
 
         if event.type == X.MappingNotify:
             self.dpy.refresh_keyboard_mapping(event)
-            logger.debug(f"MappingNotify: request={event.request}")
+            logger.debug("MappingNotify: request=%s", event.request)
 
             if event.request == X.MappingKeyboard:
                 if self.on_mapping_notify:

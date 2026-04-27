@@ -74,12 +74,12 @@ class KeyMonitor:
         try:
             stop_dpy = Display()
         except Exception as e:
-            logger.debug(f"KeyMonitor.stop: failed to open display: {e}")
+            logger.debug("KeyMonitor.stop: failed to open display: %s", e)
             return
         try:
             stop_dpy.record_disable_context(self.ctx)
             stop_dpy.flush()
         except Exception as e:
-            logger.debug(f"KeyMonitor.stop: failed to disable record context: {e}")
+            logger.debug("KeyMonitor.stop: failed to disable record context: %s", e)
         finally:
             stop_dpy.close()

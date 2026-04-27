@@ -34,6 +34,6 @@ class WakeFromSleepDetector:
         while not self._stop_event.wait(self.wait_time):
             now = time.time()
             if (now - self.last_check) > (self.wait_time + self.threshold_time):
-                logger.info(f"System wake detected (time jump: {now - self.last_check:.2f}s)")
+                logger.info("System wake detected (time jump: %.2fs)", now - self.last_check)
                 self.callback()
             self.last_check = now
