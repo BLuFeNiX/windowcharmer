@@ -68,7 +68,11 @@ class KeyMonitor:
         # record_disable_context must be called from a *different* Display connection
         # than record_enable_context — python-xlib is not thread-safe on a single Display.
         # A throwaway connection is used (not DisplayPool) so it can be closed immediately.
-        stop_dpy = Display()
+        try:
+            stop_dpy = Display()
+        except Exception as e:
+            logger.debug(f"KeyMonitor.stop: failed to open display: {e}")
+            return
         try:
             stop_dpy.record_disable_context(self.ctx)
             stop_dpy.flush()
