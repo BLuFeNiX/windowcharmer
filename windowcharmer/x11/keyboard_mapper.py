@@ -109,7 +109,15 @@ class KeyboardMapper:
         """
         with self._lock:
             try:
-                if not self._canon_super_kc or not self._canon_hyper_kc:
+                # Skip if backup never completed: writing the swap without
+                # captured originals would leave cleanup() unable to restore
+                # the canonical mapping after exit.
+                if (
+                    not self._canon_super_kc
+                    or not self._canon_hyper_kc
+                    or self.super_l_orig is None
+                    or self.hyper_l_orig is None
+                ):
                     return
                 # Read the keysym at the canonical Super position. Pre-swap it
                 # holds Super_L; post-swap it holds Hyper_L. Using the canonical
