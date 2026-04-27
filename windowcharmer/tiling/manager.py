@@ -348,4 +348,8 @@ class WindowManager:
         for win, zone in window_zones:
             if self.config.ratio_idx == 0:
                 zone = _remap_zone_no_center(zone)
-            self._apply_tile_action(TileAction(zone), win)
+            try:
+                action = TileAction(zone)
+            except ValueError:
+                continue
+            self._apply_tile_action(action, win)

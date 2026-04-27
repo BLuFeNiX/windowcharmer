@@ -161,3 +161,29 @@ def test_resolve_tile_cycle_skipped_when_no_center(wm: WindowManager) -> None:
         result = wm._resolve_tile_cycle(TileAction.LEFT, win)
 
     assert result == TileAction.LEFT
+
+
+# ---------------------------------------------------------------------------
+# resize_all_windows
+# ---------------------------------------------------------------------------
+
+
+def test_resize_all_windows_skips_invalid_zone() -> None:
+    """A multi-column half-height window (zone 'top-left-center') is not a valid
+    TileAction but passes the unknown filter; resize_all_windows must skip it
+    rather than crashing the whole resize pass.
+    """
+    wm = _make_wm_with_dim()
+    win = MagicMock()
+
+    with (
+        patch.object(wm, "list_windows", return_value=[win]),
+        patch.object(wm, "get_window_desktop", return_value=0),
+        patch.object(wm, "is_window_maximized_vertically", return_value=False),
+        patch.object(wm, "_update_state"),
+        patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="top-left-center"),
+        patch.object(wm, "_apply_tile_action") as apply_action,
+    ):
+        wm.resize_all_windows(1)  # must not raise
+
+    apply_action.assert_not_called()
