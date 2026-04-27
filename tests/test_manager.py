@@ -63,8 +63,30 @@ def test_update_state_uses_workarea_when_present(wm: WindowManager) -> None:
         wm._update_state()
 
     assert wm.dim is not None
+    assert wm.dim.wa_x == 0
     assert wm.dim.wa_y == 40
+    assert wm.dim.wa_w == 1920
     assert wm.dim.wa_h == 1000
+
+
+def test_update_state_honors_left_panel(wm: WindowManager) -> None:
+    """Regression: a left panel reports wa_x=60, wa_w=1860 in _NET_WORKAREA.
+    The previous code only unpacked y/h, so left tiling overlapped the panel.
+    """
+
+    def _gpv(window: object, atom: object, *_: object) -> list[int] | None:
+        if atom is wm.atom.workarea:
+            return [60, 0, 1860, 1080]  # 60px left panel
+        return [0]
+
+    with patch("windowcharmer.tiling.manager.get_property_value", side_effect=_gpv):
+        wm._update_state()
+
+    assert wm.dim is not None
+    assert wm.dim.wa_x == 60
+    assert wm.dim.wa_w == 1860
+    # The leftmost zone now starts at the panel boundary, not the screen edge.
+    assert wm.dim.x_left == 60
 
 
 def test_update_state_falls_back_when_workarea_absent(wm: WindowManager) -> None:
@@ -77,7 +99,9 @@ def test_update_state_falls_back_when_workarea_absent(wm: WindowManager) -> None
         wm._update_state()
 
     assert wm.dim is not None
+    assert wm.dim.wa_x == 0
     assert wm.dim.wa_y == 0
+    assert wm.dim.wa_w == 1920  # falls back to screen width
     assert wm.dim.wa_h == 1080  # falls back to screen height
 
 
@@ -105,7 +129,7 @@ def _make_wm_with_dim() -> WindowManager:
     from windowcharmer.config.dimensions import ScreenDimensions
 
     wm = _make_wm()
-    wm.dim = ScreenDimensions(1920, 40, 1000, 768)
+    wm.dim = ScreenDimensions(0, 40, 1920, 1000, 768)
     wm.config._desktop_ratios = {0: 2}  # ratio_idx 2 → non-zero center
     return wm
 
@@ -153,7 +177,7 @@ def test_resolve_tile_cycle_skipped_when_no_center(wm: WindowManager) -> None:
     from windowcharmer.config.actions import TileAction
     from windowcharmer.config.dimensions import ScreenDimensions
 
-    wm.dim = ScreenDimensions(1920, 40, 1000, 0)  # center_width = 0
+    wm.dim = ScreenDimensions(0, 40, 1920, 1000, 0)  # center_width = 0
     wm.config.center_width = 0
     win = MagicMock()
 

@@ -31,15 +31,15 @@ def test_next_ratio_multi_step_backward() -> None:
 
 def test_per_desktop_ratios() -> None:
     cfg = Config(2560)
-    cfg.set_state(2560, 0)
+    cfg.set_state(2560, 2560, 0)
     cfg.next_ratio(1)
     idx_desktop0 = cfg.ratio_idx
 
-    cfg.set_state(2560, 1)
+    cfg.set_state(2560, 2560, 1)
     # Desktop 1 should still be at default index (2)
     assert cfg.ratio_idx == 2
 
-    cfg.set_state(2560, 0)
+    cfg.set_state(2560, 2560, 0)
     # Back to desktop 0, ratio should be remembered
     assert cfg.ratio_idx == idx_desktop0
 
@@ -69,9 +69,10 @@ def test_set_state_reloads_once_per_change() -> None:
         real_reload()
 
     cfg.reload = counting_reload  # type: ignore[method-assign]
-    cfg.set_state(2560, 1)
+    cfg.set_state(2560, 2560, 1)
     assert calls == 1
     assert cfg.screen_width == 2560
+    assert cfg.wa_w == 2560
     assert cfg.active_desktop == 1
 
 
@@ -86,5 +87,16 @@ def test_set_state_noop_when_unchanged() -> None:
         real_reload()
 
     cfg.reload = counting_reload  # type: ignore[method-assign]
-    cfg.set_state(1920, 0)
+    cfg.set_state(1920, 1920, 0)
     assert calls == 0
+
+
+def test_center_width_uses_workarea_width() -> None:
+    """Regression: center_width must scale with wa_w, not screen_width — so
+    a left panel (which shrinks wa_w) shrinks the center column proportionally
+    instead of overflowing the workarea.
+    """
+    cfg = Config(1920)
+    cfg.set_state(1920, 1860, 0)  # 60px left panel
+    expected = round(1860 * cfg.supported_ratios[cfg.ratio_idx])
+    assert cfg.center_width == expected

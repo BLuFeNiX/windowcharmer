@@ -107,17 +107,22 @@ class WindowManager:
         """Refresh screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
         screen = self.d.screen()
         active_desktop = self.get_active_desktop()
-        self.config.set_state(screen.width_in_pixels, active_desktop)
 
         workarea = get_property_value(self.root, self.atom.workarea)
         if workarea:
-            _, wa_y, _, wa_h = workarea[0:4]
+            wa_x, wa_y, wa_w, wa_h = workarea[0:4]
         else:
-            wa_y, wa_h = 0, screen.height_in_pixels
+            wa_x, wa_y = 0, 0
+            wa_w, wa_h = screen.width_in_pixels, screen.height_in_pixels
+
+        # Workarea must reach Config before reload so center_width is sized
+        # against usable area, not raw screen width.
+        self.config.set_state(screen.width_in_pixels, wa_w, active_desktop)
 
         self.dim = ScreenDimensions(
-            self.config.screen_width,
+            wa_x,
             wa_y,
+            wa_w,
             wa_h,
             self.config.center_width,
         )
@@ -198,8 +203,8 @@ class WindowManager:
         # Compute what the layout will look like after the ratio step, without
         # committing the change yet so the fallback path can do it if needed.
         next_idx = (self.config.ratio_idx + step) % len(Config.supported_ratios)
-        next_center_width = round(self.config.screen_width * Config.supported_ratios[next_idx])
-        next_dim = ScreenDimensions(self.config.screen_width, self.dim.wa_y, self.dim.wa_h, next_center_width)
+        next_center_width = round(self.config.wa_w * Config.supported_ratios[next_idx])
+        next_dim = ScreenDimensions(self.dim.wa_x, self.dim.wa_y, self.dim.wa_w, self.dim.wa_h, next_center_width)
 
         targets = []
         for win, action in _resolve_zone_actions(window_zones, next_idx):

@@ -19,6 +19,8 @@ class Config:
 
     def __init__(self, screen_width: int) -> None:
         self.screen_width: int = screen_width
+        # Defaults to full screen until the manager learns the real workarea.
+        self.wa_w: int = screen_width
 
         # State mapping desktop index -> ratio index
         self._desktop_ratios: dict[int, int] = {}
@@ -30,11 +32,12 @@ class Config:
         self.ratio_idx: int = self._DEFAULT_RATIO_IDX
         self.reload()
 
-    def set_state(self, width: int, desktop: int) -> None:
-        """Update screen width and active desktop in a single reload pass."""
-        if self.screen_width == width and self.active_desktop == desktop:
+    def set_state(self, width: int, wa_w: int, desktop: int) -> None:
+        """Update screen width, workarea width, and active desktop in one reload."""
+        if self.screen_width == width and self.wa_w == wa_w and self.active_desktop == desktop:
             return
         self.screen_width = width
+        self.wa_w = wa_w
         self.active_desktop = desktop
         self.reload()
 
@@ -43,7 +46,10 @@ class Config:
         self.ratio_idx = self._desktop_ratios.get(self.active_desktop, self._DEFAULT_RATIO_IDX)
 
         self.ratio = self.supported_ratios[self.ratio_idx]
-        self.center_width = round(self.screen_width * self.ratio)
+        # Center column is sized relative to the usable workarea, not the raw
+        # screen width — otherwise large left/right panels would push the
+        # center column past the workarea edge.
+        self.center_width = round(self.wa_w * self.ratio)
 
     def next_ratio(self, step: int = 1) -> None:
         """Change the layout ratio for the active desktop."""

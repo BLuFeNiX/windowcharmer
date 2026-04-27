@@ -5,8 +5,8 @@ from windowcharmer.tiling.zones import determine_tile_zone
 
 
 def _dim() -> ScreenDimensions:
-    # 5120x1440 screen with 40px panel, 40% center (2048px)
-    return ScreenDimensions(5120, 40, 1400, 2048)
+    # 5120x1440 screen with 40px top panel, 40% center (2048px)
+    return ScreenDimensions(0, 40, 5120, 1400, 2048)
 
 
 def _window(x: int, y: int, w: int, h: int) -> MagicMock:
