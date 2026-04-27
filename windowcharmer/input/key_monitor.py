@@ -14,7 +14,9 @@ class KeyMonitor:
     def __init__(self, dpy: Display, callback: Callable[[rq.Event], None]) -> None:
         self.dpy = dpy
         self.callback = callback
-        self.ctx: Any = None  # record context handle; opaque to python-xlib callers
+        # python-xlib's record context handle has no exported type; treat it
+        # as an opaque object passed back to record_disable_context/free.
+        self.ctx: object | None = None
 
     def start(self) -> None:
         if not self.dpy.has_extension("RECORD"):
