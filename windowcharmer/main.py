@@ -149,10 +149,13 @@ def main() -> None:
         sys.exit(0)
 
     app = WindowCharmerApp(no_animate=args.no_animate)
-    # Install AFTER construction so the handler can reference app.grabber.
-    # stop() is signal-safe (sets a flag and writes one byte non-blocking),
-    # which wakes the loop immediately rather than waiting for the next X event.
-    signal.signal(signal.SIGTERM, lambda *_: app.grabber.stop())
+    # Install AFTER construction so the handler can reference app. stop() is
+    # signal-safe (sets a flag and writes one byte non-blocking), which wakes
+    # the loop immediately rather than waiting for the next X event.
+    # SIGHUP is handled too so a session-end or `kill -HUP` runs cleanup —
+    # otherwise the keymap stays inverted until next X login.
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda *_: app.stop())
     try:
         app.run_daemon()
     except KeyGrabberError as e:
