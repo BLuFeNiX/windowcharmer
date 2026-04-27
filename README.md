@@ -27,6 +27,15 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+### Cinnamon animations (optional)
+
+To get smooth compositor-driven animations when tiling on Cinnamon, install the `cinnamon` extra. Without it, tiles snap into place instantly (the `--no-animate` behavior).
+
+```sh
+sudo apt install libgirepository-2.0-dev libcairo2-dev python3-dev   # build headers for PyGObject
+uv tool install '.[cinnamon]'                                         # or pip install -e '.[cinnamon]'
+```
+
 ## Usage
 
 With uv:

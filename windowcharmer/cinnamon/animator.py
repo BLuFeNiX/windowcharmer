@@ -1,5 +1,5 @@
 import logging
-import subprocess
+import os
 import time
 from collections.abc import Callable
 
@@ -72,34 +72,6 @@ def _make_batch_script(targets: list[tuple[int, int, int, int, int]]) -> str:
 }})()"""
 
 
-def _dbus_via_subprocess(script: str) -> tuple[bool, str]:
-    result = subprocess.run(
-        [
-            "dbus-send",
-            "--session",
-            "--print-reply",
-            "--dest=org.Cinnamon",
-            "/org/Cinnamon",
-            "org.Cinnamon.Eval",
-            f"string:{script}",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=3.0,
-    )
-    if result.returncode != 0:
-        return False, result.stderr.strip()
-    ok = False
-    val = ""
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if line == "boolean true":
-            ok = True
-        elif line.startswith('string "') and line.endswith('"'):
-            val = line[8:-1]
-    return ok, val
-
-
 def _make_gi_caller() -> Callable[[str], tuple[bool, str]] | None:
     try:
         import gi
@@ -126,8 +98,12 @@ def _make_gi_caller() -> Callable[[str], tuple[bool, str]] | None:
 
         return call
     except Exception as e:
-        logger.debug("gi/D-Bus setup failed, falling back to subprocess: %s", e)
+        logger.debug("gi/D-Bus setup failed: %s", e)
         return None
+
+
+def _on_cinnamon() -> bool:
+    return "cinnamon" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
 
 
 class CinnamonAnimator:
@@ -135,16 +111,21 @@ class CinnamonAnimator:
         self._disabled = disabled
         self._available: bool | None = None
         self._last_probe: float = 0.0
-        # Skip the gi/D-Bus setup when disabled so we don't open a session bus
-        # connection we'll never use.
-        self._call: Callable[[str], tuple[bool, str]]
+        self._call: Callable[[str], tuple[bool, str]] | None = None
         if disabled:
-            self._call = _dbus_via_subprocess
-        else:
-            self._call = _make_gi_caller() or _dbus_via_subprocess
+            return
+        self._call = _make_gi_caller()
+        if self._call is None:
+            self._disabled = True
+            if _on_cinnamon():
+                logger.warning(
+                    "Cinnamon detected but tile animations are disabled: PyGObject is unavailable. "
+                    "Reinstall with the cinnamon extra to enable animations: "
+                    "uv tool install --reinstall 'windowcharmer[cinnamon]'"
+                )
 
     def is_available(self) -> bool:
-        if self._disabled:
+        if self._disabled or self._call is None:
             return False
         if self._available is True:
             return True
@@ -162,6 +143,7 @@ class CinnamonAnimator:
         """Animate multiple windows simultaneously. targets: [(xid, tx, ty, tw, th), ...]"""
         if not self.is_available() or not targets:
             return False
+        assert self._call is not None  # is_available() guarantees this
         try:
             ok, val = self._call(_make_batch_script(targets))
             if not ok or val != "1":
@@ -176,6 +158,7 @@ class CinnamonAnimator:
         """Slide window to (tx, ty, tw, th) via Cinnamon compositor animation."""
         if not self.is_available():
             return False
+        assert self._call is not None  # is_available() guarantees this
         try:
             ok, val = self._call(_make_script(xid, tx, ty, tw, th))
             if not ok or val != "1":

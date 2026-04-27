@@ -20,9 +20,8 @@ def _make_animator_with_call(call_results: list[object]) -> tuple[CinnamonAnimat
             raise result
         return result  # type: ignore[return-value]
 
-    with patch("windowcharmer.cinnamon.animator._make_gi_caller", return_value=None):
+    with patch("windowcharmer.cinnamon.animator._make_gi_caller", return_value=fake_call):
         animator = CinnamonAnimator(disabled=False)
-    animator._call = fake_call
     return animator, calls
 
 
