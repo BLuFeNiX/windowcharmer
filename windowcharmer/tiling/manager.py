@@ -18,6 +18,9 @@ from .zones import determine_tile_zone
 
 logger = logging.getLogger(__name__)
 
+# _NET_WM_DESKTOP sentinel for "show on all desktops" (sticky windows).
+_ALL_DESKTOPS = 0xFFFFFFFF
+
 
 @dataclass(frozen=True)
 class FrameExtents:
@@ -345,7 +348,8 @@ class WindowManager:
         result: list[tuple[Window, str]] = []
         for win in self.list_windows():
             try:
-                if self.get_window_desktop(win) != self.config.active_desktop:
+                desktop = self.get_window_desktop(win)
+                if desktop != self.config.active_desktop and desktop != _ALL_DESKTOPS:
                     continue
                 zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
                 if "unknown" not in zone:

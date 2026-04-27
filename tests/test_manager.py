@@ -211,3 +211,22 @@ def test_resize_all_windows_skips_invalid_zone() -> None:
         wm.resize_all_windows(1)  # must not raise
 
     apply_action.assert_not_called()
+
+
+def test_resize_all_windows_includes_sticky_window() -> None:
+    """Sticky windows have _NET_WM_DESKTOP == 0xFFFFFFFF and must be tiled on every desktop."""
+    wm = _make_wm_with_dim()
+    wm.config.active_desktop = 1
+    win = MagicMock()
+
+    with (
+        patch.object(wm, "list_windows", return_value=[win]),
+        patch.object(wm, "get_window_desktop", return_value=0xFFFFFFFF),
+        patch.object(wm, "is_window_maximized_vertically", return_value=False),
+        patch.object(wm, "_update_state"),
+        patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"),
+        patch.object(wm, "_apply_tile_action") as apply_action,
+    ):
+        wm.resize_all_windows(1)
+
+    apply_action.assert_called_once()
