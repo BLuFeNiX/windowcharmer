@@ -15,7 +15,10 @@ class Config:
     )
     # fmt: on
 
-    _DEFAULT_RATIO_IDX: ClassVar[int] = 4  # index of 50% in supported_ratios
+    # Index into supported_ratios — 50% center column. Stored as an index, not
+    # a float looked up via .index(), so a future ratio addition doesn't quietly
+    # shift the default and float-equality lookups don't bite.
+    _DEFAULT_RATIO_IDX: ClassVar[int] = 4
 
     def __init__(self, wa_w: int) -> None:
         """Construct with a workarea width.
