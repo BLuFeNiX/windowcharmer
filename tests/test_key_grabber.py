@@ -1,6 +1,6 @@
 """Unit tests for KeyGrabber that require no real X server connection."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from Xlib import X
@@ -29,21 +29,32 @@ def _make_bad_access() -> BadAccess:
 def _make_grabber(events: list[object] | None = None) -> tuple[KeyGrabber, MagicMock]:
     """Build a KeyGrabber whose Display.next_event yields each entry in turn.
 
-    Each entry may be a fake event or an exception to raise.
+    Each entry may be a fake event or an exception to raise. pending_events()
+    is wired up to report the remaining count so the new select-based loop
+    drains everything before parking.
     """
     dpy = MagicMock()
     dpy.keysym_to_keycode.return_value = 42
+    dpy.fileno.return_value = 100  # arbitrary; never read by select in tests
 
     if events is not None:
         iterator = iter(events)
+        remaining = [len(events)]
+
+        def _pending() -> int:
+            return remaining[0]
 
         def _next() -> object:
             item = next(iterator)
+            remaining[0] = max(0, remaining[0] - 1)
             if isinstance(item, Exception):
                 raise item
             return item
 
+        dpy.pending_events.side_effect = _pending
         dpy.next_event.side_effect = _next
+    else:
+        dpy.pending_events.return_value = 0
 
     grabber = KeyGrabber(dpy, {"Up": MagicMock()})
     return grabber, dpy
@@ -84,6 +95,25 @@ def test_unexpected_exception_wrapped_as_typed_error() -> None:
 
     with pytest.raises(KeyGrabberError, match="display gone"):
         grabber.start()
+
+
+def test_stop_during_select_wakes_loop_promptly() -> None:
+    """Regression: SIGTERM (or any caller) invoking stop() while the loop is
+    parked in select() must wake it without waiting for an X event. Simulate
+    the wakeup by having select() observe stop() being called and return the
+    wake fd as ready.
+    """
+    grabber, _ = _make_grabber()
+
+    def _fake_select(rlist, wlist, xlist, timeout=None):  # type: ignore[no-untyped-def]
+        # Caller (e.g. SIGTERM handler) invokes stop() — this writes a byte to
+        # the wake pipe and sets _stopped. Return the wake fd as ready, just
+        # like the kernel would.
+        grabber.stop()
+        return [grabber._wake_r], [], []
+
+    with patch("windowcharmer.input.key_grabber.select.select", side_effect=_fake_select):
+        grabber.start()  # must return cleanly, not hang
 
 
 def test_bad_access_retried_once_then_succeeds() -> None:

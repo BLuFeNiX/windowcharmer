@@ -133,9 +133,11 @@ def main() -> None:
     if args.debug:
         logging.getLogger("windowcharmer").setLevel(logging.DEBUG)
 
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-
     app = WindowCharmerApp(no_animate=args.no_animate)
+    # Install AFTER construction so the handler can reference app.grabber.
+    # stop() is signal-safe (sets a flag and writes one byte non-blocking),
+    # which wakes the loop immediately rather than waiting for the next X event.
+    signal.signal(signal.SIGTERM, lambda *_: app.grabber.stop())
     try:
         app.run_daemon()
     except KeyGrabberError as e:
