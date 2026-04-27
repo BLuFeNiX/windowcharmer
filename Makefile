@@ -1,4 +1,4 @@
-.PHONY: lint format format-check typecheck test daemon install-dev
+.PHONY: lint format format-check typecheck test install-dev
 
 lint:
 	ruff check windowcharmer/ tests/
@@ -16,9 +16,6 @@ typecheck:
 
 test:
 	pytest -v
-
-daemon:
-	bash start_daemon.sh
 
 install-dev:
 	pip install -e ".[dev]"
