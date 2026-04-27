@@ -7,6 +7,12 @@ logger = logging.getLogger(__name__)
 
 ANIMATION_DURATION_MS = 180
 
+# D-Bus call deadline. Healthy Cinnamon round-trips are sub-millisecond, so
+# 50 ms is ~25x headroom while still well under the ~100 ms "instantaneous"
+# threshold. Exceeding it means Cinnamon is wedged; we fall back to a
+# non-animated snap and let the cooldown logic decide when to retry.
+ANIMATION_DEADLINE_MS = 50
+
 # How long to wait before re-probing after a failed availability check.
 _PROBE_COOLDOWN_SECONDS = 30.0
 
@@ -88,7 +94,7 @@ def _make_gi_caller() -> Callable[[str], tuple[bool, str]] | None:
                 GLib.Variant("(s)", (script,)),
                 GLib.VariantType("(bs)"),
                 Gio.DBusCallFlags.NONE,
-                2000,
+                ANIMATION_DEADLINE_MS,
                 None,
             )
             ok, val = result.unpack()
