@@ -17,9 +17,14 @@ class Config:
 
     _DEFAULT_RATIO_IDX: ClassVar[int] = 4  # index of 50% in supported_ratios
 
-    def __init__(self, wa_w: int = 0) -> None:
-        # wa_w is overwritten by the first set_state() call. The default lets
-        # callers construct a Config before they know the workarea width.
+    def __init__(self, wa_w: int) -> None:
+        """Construct with a workarea width.
+
+        Pass wa_w=0 to defer sizing — the first set_state() call will
+        populate it from _NET_WORKAREA. Required as an explicit argument
+        so that "deferred sizing" is a deliberate caller choice rather
+        than an accidental default.
+        """
         self.wa_w: int = wa_w
 
         # State mapping desktop index -> ratio index

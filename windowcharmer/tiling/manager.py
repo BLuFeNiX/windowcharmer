@@ -110,7 +110,7 @@ class WindowManager:
 
         # Config starts unsized; _update_state populates wa_w from _NET_WORKAREA
         # on the first action.
-        self.config: Config = Config()
+        self.config: Config = Config(wa_w=0)
         self.dim: ScreenDimensions | None = None
         self.animator: CinnamonAnimator = CinnamonAnimator(disabled=no_animate)
 
