@@ -23,17 +23,20 @@ class WakeFromSleepDetector:
         self.wait_time = wait_time
         self.threshold_time = threshold_time
         self._stop_event = stop_event or threading.Event()
-        self.last_check = time.time()
 
     def start(self) -> None:
         """Poll for wall-clock drift until stop_event is set."""
         logger.info("Starting WakeFromSleepDetector...")
+        # Anchor the baseline at the moment polling actually begins, not at
+        # __init__: otherwise a long delay between construction and start()
+        # gets misread as a sleep on the first tick.
+        last_check = time.time()
         # wait() returns True when the event fires, False on timeout — so the
         # loop only continues after a full wait_time has elapsed and shuts
         # down promptly when stop_event is set.
         while not self._stop_event.wait(self.wait_time):
             now = time.time()
-            if (now - self.last_check) > (self.wait_time + self.threshold_time):
-                logger.info("System wake detected (time jump: %.2fs)", now - self.last_check)
+            if (now - last_check) > (self.wait_time + self.threshold_time):
+                logger.info("System wake detected (time jump: %.2fs)", now - last_check)
                 self.callback()
-            self.last_check = now
+            last_check = now
