@@ -100,12 +100,11 @@ class WindowManager:
         self.d: Display = DisplayPool.get_display("wm")
         self.atom = AtomCache(self.d)
 
-        screen = self.d.screen()
-        self.root: Window = screen.root
+        self.root: Window = self.d.screen().root
 
-        # Initial wa_w is the screen width; _update_state replaces it with the
-        # real workarea width on the first action.
-        self.config: Config = Config(screen.width_in_pixels)
+        # Config starts unsized; _update_state populates wa_w from _NET_WORKAREA
+        # on the first action.
+        self.config: Config = Config()
         self.dim: ScreenDimensions | None = None
         self.animator: CinnamonAnimator = CinnamonAnimator(disabled=no_animate)
 

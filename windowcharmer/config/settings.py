@@ -17,8 +17,9 @@ class Config:
 
     _DEFAULT_RATIO_IDX: ClassVar[int] = 4  # index of 50% in supported_ratios
 
-    def __init__(self, wa_w: int) -> None:
-        # Defaults to full screen until the manager learns the real workarea.
+    def __init__(self, wa_w: int = 0) -> None:
+        # wa_w is overwritten by the first set_state() call. The default lets
+        # callers construct a Config before they know the workarea width.
         self.wa_w: int = wa_w
 
         # State mapping desktop index -> ratio index

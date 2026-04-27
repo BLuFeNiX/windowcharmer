@@ -131,6 +131,7 @@ def _make_wm_with_dim() -> WindowManager:
     wm = _make_wm()
     wm.dim = ScreenDimensions(0, 40, 1920, 1000, 768)
     wm.config._desktop_ratios = {0: 2}  # ratio_idx 2 → non-zero center
+    wm.config.set_state(1920, 0)  # populate wa_w so center_width is computed
     return wm
 
 
