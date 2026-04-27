@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 from Xlib import X, protocol
 from Xlib.display import Display
-from Xlib.error import ConnectionClosedError, DisplayConnectionError
+from Xlib.error import BadDrawable, BadWindow, ConnectionClosedError, DisplayConnectionError
 from Xlib.xobject.drawable import Window
 
 from ..cinnamon.animator import CinnamonAnimator
@@ -352,9 +352,9 @@ class WindowManager:
     def _collect_zoned_windows(self) -> list[tuple[Window, str]]:
         """Return (window, zone) pairs for all tiled windows on the active desktop.
 
-        Windows on other desktops, in unknown zones, or that raise during
-        inspection are skipped. Zones may be strings that don't map to a
-        TileAction (e.g. 'top-left-center'); callers must guard against that.
+        Windows on other desktops, in unknown zones, or that vanish mid-scan
+        are skipped. Zones may be strings that don't map to a TileAction
+        (e.g. 'top-left-center'); callers must guard against that.
         """
         result: list[tuple[Window, str]] = []
         for win in self.list_windows():
@@ -365,6 +365,6 @@ class WindowManager:
                 zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
                 if "unknown" not in zone:
                     result.append((win, zone))
-            except Exception as e:
+            except (BadWindow, BadDrawable) as e:
                 logger.debug("Skipping window during tiled-zone scan: %s", e)
         return result
