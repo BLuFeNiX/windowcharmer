@@ -193,6 +193,9 @@ class WindowManager:
         if spec.needs_center and self.config.center_width == 0:
             return False
         x, y, w, h = spec.geom(self.dim)
+        # Mirror the fallback's flag handling so animated and non-animated paths
+        # leave the same _NET_WM_STATE on the window.
+        self.set_max_flags(win, spec.v_max, spec.h_max)
         return self.animator.animate(win.id, x, y, w, h)
 
     def _try_animated_resize_all(self, step: int) -> bool:
