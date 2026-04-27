@@ -1,10 +1,14 @@
 import logging
 import subprocess
+import time
 from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
 ANIMATION_DURATION_MS = 180
+
+# How long to wait before re-probing after a failed availability check.
+_PROBE_COOLDOWN_SECONDS = 30.0
 
 
 _ANIMATE_BODY = """\
@@ -50,10 +54,7 @@ def _make_script(xid: int, tx: int, ty: int, tw: int, th: int) -> str:
 
 
 def _make_batch_script(targets: list[tuple[int, int, int, int, int]]) -> str:
-    entries = ", ".join(
-        f"{{xid:{xid},tx:{tx},ty:{ty},tw:{tw},th:{th}}}"
-        for xid, tx, ty, tw, th in targets
-    )
+    entries = ", ".join(f"{{xid:{xid},tx:{tx},ty:{ty},tw:{tw},th:{th}}}" for xid, tx, ty, tw, th in targets)
     return f"""\
 (function() {{
     let windows = [{entries}];
@@ -73,10 +74,18 @@ def _make_batch_script(targets: list[tuple[int, int, int, int, int]]) -> str:
 
 def _dbus_via_subprocess(script: str) -> tuple[bool, str]:
     result = subprocess.run(
-        ["dbus-send", "--session", "--print-reply",
-         "--dest=org.Cinnamon", "/org/Cinnamon",
-         "org.Cinnamon.Eval", f"string:{script}"],
-        capture_output=True, text=True, timeout=3.0,
+        [
+            "dbus-send",
+            "--session",
+            "--print-reply",
+            "--dest=org.Cinnamon",
+            "/org/Cinnamon",
+            "org.Cinnamon.Eval",
+            f"string:{script}",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=3.0,
     )
     if result.returncode != 0:
         return False, result.stderr.strip()
@@ -94,6 +103,7 @@ def _dbus_via_subprocess(script: str) -> tuple[bool, str]:
 def _make_gi_caller() -> Callable[[str], tuple[bool, str]] | None:
     try:
         import gi
+
         gi.require_version("Gio", "2.0")
         from gi.repository import Gio, GLib
 
@@ -101,10 +111,15 @@ def _make_gi_caller() -> Callable[[str], tuple[bool, str]] | None:
 
         def call(script: str) -> tuple[bool, str]:
             result = bus.call_sync(
-                "org.Cinnamon", "/org/Cinnamon", "org.Cinnamon", "Eval",
+                "org.Cinnamon",
+                "/org/Cinnamon",
+                "org.Cinnamon",
+                "Eval",
                 GLib.Variant("(s)", (script,)),
                 GLib.VariantType("(bs)"),
-                Gio.DBusCallFlags.NONE, 2000, None,
+                Gio.DBusCallFlags.NONE,
+                2000,
+                None,
             )
             ok, val = result.unpack()
             return bool(ok), str(val)
@@ -117,8 +132,10 @@ def _make_gi_caller() -> Callable[[str], tuple[bool, str]] | None:
 
 class CinnamonAnimator:
     def __init__(self, disabled: bool = False) -> None:
-        self._available: bool | None = False if disabled else None
-        # Skip the gi/D-Bus probe when disabled so we don't open a session bus
+        self._disabled = disabled
+        self._available: bool | None = None
+        self._last_probe: float = 0.0
+        # Skip the gi/D-Bus setup when disabled so we don't open a session bus
         # connection we'll never use.
         self._call: Callable[[str], tuple[bool, str]]
         if disabled:
@@ -127,13 +144,19 @@ class CinnamonAnimator:
             self._call = _make_gi_caller() or _dbus_via_subprocess
 
     def is_available(self) -> bool:
-        if self._available is None:
+        if self._disabled:
+            return False
+        if self._available is True:
+            return True
+        now = time.monotonic()
+        if self._available is None or (now - self._last_probe) >= _PROBE_COOLDOWN_SECONDS:
+            self._last_probe = now
             try:
                 ok, val = self._call("1+1")
-                self._available = ok and val == "2"
+                self._available = bool(ok and val == "2")
             except Exception:
                 self._available = False
-        return self._available
+        return self._available is True
 
     def animate_batch(self, targets: list[tuple[int, int, int, int, int]]) -> bool:
         """Animate multiple windows simultaneously. targets: [(xid, tx, ty, tw, th), ...]"""

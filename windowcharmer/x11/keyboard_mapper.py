@@ -46,9 +46,7 @@ class KeyboardMapper:
             canon_super_kc = min(self.super_l_keycode, self.hyper_l_keycode)
             canon_hyper_kc = max(self.super_l_keycode, self.hyper_l_keycode)
             canon_super_map = self._dpy.get_keyboard_mapping(canon_super_kc, 1)
-            inverted = (
-                canon_super_map and canon_super_map[0] and canon_super_map[0][0] == self.hyper_l_keysym
-            )
+            inverted = canon_super_map and canon_super_map[0] and canon_super_map[0][0] == self.hyper_l_keysym
             if inverted:
                 self.super_l_keycode = canon_super_kc
                 self.hyper_l_keycode = canon_hyper_kc
