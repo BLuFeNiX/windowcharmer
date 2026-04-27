@@ -269,7 +269,38 @@ def test_force_canonical_returns_false_when_keysym_missing() -> None:
         hyper_kc=0,
         mapping=live,
     )
-    mapper._dpy.get_keyboard_mapping.side_effect = lambda kc, count: [
-        live.get(kc + i, []) for i in range(count)
-    ]
+    mapper._dpy.get_keyboard_mapping.side_effect = lambda kc, count: [live.get(kc + i, []) for i in range(count)]
     assert mapper.force_canonical() is False
+
+
+def test_swap_preserves_higher_shift_levels() -> None:
+    """Custom xkb layouts may bind Super_L/Hyper_L at multiple shift levels
+    (e.g. `keycode 207 = NoSymbol Hyper_L NoSymbol Hyper_L`). The swap must
+    not truncate the row to a 1-keysym write — that would silently strip
+    levels 1+ from the user's keymap, and --fix-keymap (which uses the same
+    primitive) would make the loss permanent on non-default layouts.
+    """
+    live = {
+        _CANON_SUPER_KC: [_SUPER_L, _SUPER_L, _SUPER_L, _SUPER_L],
+        _CANON_HYPER_KC: [_HYPER_L, _HYPER_L, _HYPER_L, _HYPER_L],
+    }
+    mapper = _make_mapper(super_kc=_CANON_SUPER_KC, hyper_kc=_CANON_HYPER_KC, mapping=live)
+
+    def _live_get(kc: int, count: int) -> list[list[int]]:
+        return [live.get(kc + i, []) for i in range(count)]
+
+    written: list[tuple[int, list[int]]] = []
+
+    def _record_write(kc: int, keysyms: list[tuple[int, ...]]) -> None:
+        written.append((kc, list(keysyms[0])))
+
+    mapper._dpy.get_keyboard_mapping.side_effect = _live_get
+    mapper._dpy.change_keyboard_mapping.side_effect = _record_write
+
+    mapper.apply_super_hyper_swap()
+
+    # Two writes: one at canon-Super (now Hyper_L at level 0), one at canon-Hyper.
+    # Levels 1+ should retain their original keysyms — neither truncated nor remapped.
+    by_kc = {kc: row for kc, row in written}
+    assert by_kc[_CANON_SUPER_KC] == [_HYPER_L, _SUPER_L, _SUPER_L, _SUPER_L]
+    assert by_kc[_CANON_HYPER_KC] == [_SUPER_L, _HYPER_L, _HYPER_L, _HYPER_L]

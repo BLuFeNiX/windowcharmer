@@ -194,7 +194,20 @@ class KeyboardMapper:
                 logger.debug("", exc_info=True)
 
     def _change_keyboard_mapping(self, keycode: int, new_keysym: int) -> None:
-        self._dpy.change_keyboard_mapping(keycode, [(new_keysym,)])
+        """Set the level-0 keysym at keycode to new_keysym, preserving levels 1+.
+
+        Custom xkb layouts often bind modifier keysyms at multiple shift levels
+        (e.g. `keycode 207 = NoSymbol Hyper_L NoSymbol Hyper_L` so Hyper still
+        works while Shift is held). A naive single-keysym write would truncate
+        those higher levels — and since cleanup() only restores them on a clean
+        shutdown, --fix-keymap would leave a custom layout permanently stripped.
+        """
+        existing = self._dpy.get_keyboard_mapping(keycode, 1)
+        if existing and existing[0]:
+            new_row = (new_keysym, *existing[0][1:])
+        else:
+            new_row = (new_keysym,)
+        self._dpy.change_keyboard_mapping(keycode, [new_row])
 
     def cleanup(self) -> None:
         """Restore the original keysym assignments at their canonical positions."""
