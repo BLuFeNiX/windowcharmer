@@ -1,15 +1,15 @@
 .PHONY: lint format format-check typecheck test daemon install-dev
 
 lint:
-	ruff check windowcharmer/
+	ruff check windowcharmer/ tests/
 
 format:
 	ruff format windowcharmer/ tests/
-	ruff check --fix windowcharmer/
+	ruff check --fix windowcharmer/ tests/
 
 format-check:
 	ruff format --check windowcharmer/ tests/
-	ruff check windowcharmer/
+	ruff check windowcharmer/ tests/
 
 typecheck:
 	mypy windowcharmer/

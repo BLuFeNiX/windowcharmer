@@ -1,10 +1,11 @@
 from unittest.mock import MagicMock
-from windowcharmer.tiling.zones import determine_tile_zone
+
 from windowcharmer.config.dimensions import ScreenDimensions
+from windowcharmer.tiling.zones import determine_tile_zone
 
 
 def _dim() -> ScreenDimensions:
-    # 5120×1440 screen with 40px panel, 40% center (2048px)
+    # 5120x1440 screen with 40px panel, 40% center (2048px)
     return ScreenDimensions(5120, 40, 1400, 2048)
 
 

@@ -101,7 +101,7 @@ def test_execute_action_logs_and_returns_on_update_failure(wm: WindowManager, ca
 
 
 def _make_wm_with_dim() -> WindowManager:
-    """WindowManager with a real ScreenDimensions (1920×1080, 40px panel, 768px center)."""
+    """WindowManager with a real ScreenDimensions (1920x1080, 40px panel, 768px center)."""
     from windowcharmer.config.dimensions import ScreenDimensions
 
     wm = _make_wm()
@@ -150,8 +150,8 @@ def test_resolve_tile_cycle(start_zone: str, action_in: str, action_out: str) ->
 
 def test_resolve_tile_cycle_skipped_when_no_center(wm: WindowManager) -> None:
     """Cycling must not trigger when center_width == 0 (two-column mode)."""
-    from windowcharmer.config.dimensions import ScreenDimensions
     from windowcharmer.config.actions import TileAction
+    from windowcharmer.config.dimensions import ScreenDimensions
 
     wm.dim = ScreenDimensions(1920, 40, 1000, 0)  # center_width = 0
     wm.config.center_width = 0

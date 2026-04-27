@@ -1,9 +1,8 @@
-import tomllib
-import pytest
 from pathlib import Path
-from unittest.mock import patch, mock_open
-from windowcharmer.config.keybindings import load_keybindings, get_default_keybindings
+from unittest.mock import patch
+
 from windowcharmer.config.actions import TileAction
+from windowcharmer.config.keybindings import get_default_keybindings, load_keybindings
 
 
 def test_defaults_load_without_config(tmp_path: Path) -> None:
