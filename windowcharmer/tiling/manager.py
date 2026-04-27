@@ -33,10 +33,14 @@ class FrameExtents:
 
 class _ZoneSpec(NamedTuple):
     # geom=None marks a flag-only action (MAX, RESTORE) that touches
-    # _NET_WM_STATE without issuing a configure.
+    # _NET_WM_STATE without issuing a configure. For tile actions
+    # (geom set) v_max/h_max are unused — we deliberately do NOT direct-write
+    # _NET_WM_STATE for tiles because Muffin resyncs in response and CSD
+    # apps (e.g. Brave) flicker; the geometry write alone leaves the
+    # window correctly placed without disturbing the WM's focus stack.
     geom: Callable[[ScreenDimensions], tuple[int, int, int, int]] | None
-    v_max: int
-    h_max: int
+    v_max: int = 0
+    h_max: int = 0
     needs_center: bool = False
 
 
@@ -76,17 +80,17 @@ def _resolve_zone_actions(
 
 # fmt: off
 _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
-    TileAction.LEFT:          _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,               d.h_full), 1, 0),
-    TileAction.LEFT_CENTER:   _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side + d.w_center,  d.h_full), 1, 0, True),  # noqa: E501
-    TileAction.RIGHT:         _ZoneSpec(lambda d: (d.x_right,  d.y_top,    d.w_side,               d.h_full), 1, 0),
-    TileAction.RIGHT_CENTER:  _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center + d.w_side,  d.h_full), 1, 0, True),  # noqa: E501
-    TileAction.CENTER:        _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_full), 1, 0, True),
-    TileAction.TOP_LEFT:      _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,   d.h_half), 0, 0),
-    TileAction.BOTTOM_LEFT:   _ZoneSpec(lambda d: (d.x_left,   d.y_bottom, d.w_side,   d.h_half), 0, 0),
-    TileAction.TOP_RIGHT:     _ZoneSpec(lambda d: (d.x_right,  d.y_top,    d.w_side,   d.h_half), 0, 0),
-    TileAction.BOTTOM_RIGHT:  _ZoneSpec(lambda d: (d.x_right,  d.y_bottom, d.w_side,   d.h_half), 0, 0),
-    TileAction.TOP_CENTER:    _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_half), 0, 0, True),
-    TileAction.BOTTOM_CENTER: _ZoneSpec(lambda d: (d.x_center, d.y_bottom, d.w_center, d.h_half), 0, 0, True),
+    TileAction.LEFT:          _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,               d.h_full)),
+    TileAction.LEFT_CENTER:   _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side + d.w_center,  d.h_full), needs_center=True),  # noqa: E501
+    TileAction.RIGHT:         _ZoneSpec(lambda d: (d.x_right,  d.y_top,    d.w_side,               d.h_full)),
+    TileAction.RIGHT_CENTER:  _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center + d.w_side,  d.h_full), needs_center=True),  # noqa: E501
+    TileAction.CENTER:        _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_full), needs_center=True),
+    TileAction.TOP_LEFT:      _ZoneSpec(lambda d: (d.x_left,   d.y_top,    d.w_side,   d.h_half)),
+    TileAction.BOTTOM_LEFT:   _ZoneSpec(lambda d: (d.x_left,   d.y_bottom, d.w_side,   d.h_half)),
+    TileAction.TOP_RIGHT:     _ZoneSpec(lambda d: (d.x_right,  d.y_top,    d.w_side,   d.h_half)),
+    TileAction.BOTTOM_RIGHT:  _ZoneSpec(lambda d: (d.x_right,  d.y_bottom, d.w_side,   d.h_half)),
+    TileAction.TOP_CENTER:    _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_half), needs_center=True),
+    TileAction.BOTTOM_CENTER: _ZoneSpec(lambda d: (d.x_center, d.y_bottom, d.w_center, d.h_half), needs_center=True),
     TileAction.MAX:           _ZoneSpec(None, 1, 1),
     TileAction.RESTORE:       _ZoneSpec(None, 0, 0),
 }
@@ -198,9 +202,6 @@ class WindowManager:
         if spec.needs_center and self.config.center_width == 0:
             return False
         x, y, w, h = spec.geom(self.dim)
-        # Mirror the fallback's flag handling so animated and non-animated paths
-        # leave the same _NET_WM_STATE on the window.
-        self.set_max_flags(win, spec.v_max, spec.h_max)
         return self.animator.animate(win.id, x, y, w, h)
 
     def _try_animated_resize_all(self, step: int) -> bool:
@@ -256,7 +257,6 @@ class WindowManager:
             return
 
         x, y, w, h = spec.geom(self.dim)
-        self.set_max_flags(win, spec.v_max, spec.h_max)
         self.move_and_resize(win, x, y, w, h)
 
     # --- Helpers ---
