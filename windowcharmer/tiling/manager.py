@@ -279,9 +279,13 @@ class WindowManager:
         """Fits a window into (x, y, width, height), accounting for GTK CSD and WM frames."""
         x, y, client_w, client_h = self._compute_client_geometry(window, x, y, width, height)
 
-        # Maximized windows ignore configure(); clear both flags first.
+        # Maximized and fullscreen windows ignore configure() — the WM owns
+        # their geometry. Clear those flags first or the configure will be
+        # rejected (or briefly applied then snapped back, producing a flicker).
         if self.is_window_maximized_vertically(window) or self.is_window_maximized_horizontally(window):
             self.set_max_flags(window, 0, 0)
+        if self.is_window_fullscreen(window):
+            self.set_fullscreen_flag(window, on=False)
 
         window.configure(
             value_mask=X.CWX | X.CWY | X.CWWidth | X.CWHeight,
@@ -320,6 +324,11 @@ class WindowManager:
         """Sets _NET_WM_STATE maximization flags."""
         self.send_client_message(window, self.atom.wm_state, (v, self.atom.v_max, 0, 0, 0))
         self.send_client_message(window, self.atom.wm_state, (h, self.atom.h_max, 0, 0, 0))
+
+    def set_fullscreen_flag(self, window: Window, on: bool) -> None:
+        """Set or clear _NET_WM_STATE_FULLSCREEN."""
+        action = 1 if on else 0
+        self.send_client_message(window, self.atom.wm_state, (action, self.atom.fullscreen, 0, 0, 0))
 
     def send_client_message(self, window: Window, atom: int, data: tuple[int, int, int, int, int]) -> None:
         """Send a _NET_WM_STATE client message to the root window."""
@@ -369,6 +378,10 @@ class WindowManager:
     def is_window_maximized_horizontally(self, window: Window) -> bool:
         """Returns True if _NET_WM_STATE_MAXIMIZED_HORZ is set."""
         return self._is_maximized(window, self.atom.h_max)
+
+    def is_window_fullscreen(self, window: Window) -> bool:
+        """Returns True if _NET_WM_STATE_FULLSCREEN is set."""
+        return self._is_maximized(window, self.atom.fullscreen)
 
     def list_windows(self) -> list[Window]:
         """Returns all client windows in stacking order."""

@@ -35,6 +35,10 @@ class AtomCache:
         return self._get("_NET_WM_STATE_MAXIMIZED_HORZ")
 
     @property
+    def fullscreen(self) -> int:
+        return self._get("_NET_WM_STATE_FULLSCREEN")
+
+    @property
     def current_desktop(self) -> int:
         return self._get("_NET_CURRENT_DESKTOP")
 

@@ -31,6 +31,8 @@ function _wcAnimate(actor, tx, ty, tw, th, dur) {
     try {
         if (mw.maximized_horizontally || mw.maximized_vertically)
             mw.unmaximize(3);  // Meta.MaximizeFlags.BOTH
+        if (mw.is_fullscreen())
+            mw.unmake_fullscreen();
     } finally {
         Main.animations_enabled = prevAnim;
     }

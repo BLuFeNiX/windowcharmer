@@ -373,6 +373,7 @@ def test_move_and_resize_clears_max_flags_when_maximized(wm: WindowManager) -> N
         patch.object(wm, "_compute_client_geometry", return_value=(0, 0, 800, 600)),
         patch.object(wm, "is_window_maximized_vertically", return_value=True),
         patch.object(wm, "is_window_maximized_horizontally", return_value=False),
+        patch.object(wm, "is_window_fullscreen", return_value=False),
         patch.object(wm, "set_max_flags") as set_flags,
     ):
         wm.move_and_resize(win, 0, 0, 800, 600)
@@ -386,16 +387,58 @@ def test_move_and_resize_skips_clear_when_not_maximized(wm: WindowManager) -> No
         patch.object(wm, "_compute_client_geometry", return_value=(10, 20, 100, 200)),
         patch.object(wm, "is_window_maximized_vertically", return_value=False),
         patch.object(wm, "is_window_maximized_horizontally", return_value=False),
+        patch.object(wm, "is_window_fullscreen", return_value=False),
         patch.object(wm, "set_max_flags") as set_flags,
+        patch.object(wm, "set_fullscreen_flag") as set_fs,
     ):
         wm.move_and_resize(win, 10, 20, 100, 200)
     set_flags.assert_not_called()
+    set_fs.assert_not_called()
     win.configure.assert_called_once()
     kwargs = win.configure.call_args.kwargs
     assert kwargs["x"] == 10
     assert kwargs["y"] == 20
     assert kwargs["width"] == 100
     assert kwargs["height"] == 200
+
+
+def test_move_and_resize_clears_fullscreen_flag_when_fullscreen(wm: WindowManager) -> None:
+    """A fullscreen window ignores configure() — the WM owns its geometry while
+    the flag is set. Without the clear, the configure is rejected (or briefly
+    applied then snapped back, producing a flicker) and the window stays
+    fullscreen.
+    """
+    win = MagicMock()
+    with (
+        patch.object(wm, "_compute_client_geometry", return_value=(0, 0, 800, 600)),
+        patch.object(wm, "is_window_maximized_vertically", return_value=False),
+        patch.object(wm, "is_window_maximized_horizontally", return_value=False),
+        patch.object(wm, "is_window_fullscreen", return_value=True),
+        patch.object(wm, "set_fullscreen_flag") as set_fs,
+    ):
+        wm.move_and_resize(win, 0, 0, 800, 600)
+    set_fs.assert_called_once_with(win, on=False)
+    win.configure.assert_called_once()
+
+
+def test_move_and_resize_clears_both_when_max_and_fullscreen() -> None:
+    """A window can carry both maximize and fullscreen flags simultaneously
+    (some apps toggle fullscreen on a previously-maximized window). Clear both
+    before configure, otherwise either residual flag keeps the WM in charge.
+    """
+    wm = _make_wm()
+    win = MagicMock()
+    with (
+        patch.object(wm, "_compute_client_geometry", return_value=(0, 0, 800, 600)),
+        patch.object(wm, "is_window_maximized_vertically", return_value=True),
+        patch.object(wm, "is_window_maximized_horizontally", return_value=True),
+        patch.object(wm, "is_window_fullscreen", return_value=True),
+        patch.object(wm, "set_max_flags") as set_max,
+        patch.object(wm, "set_fullscreen_flag") as set_fs,
+    ):
+        wm.move_and_resize(win, 0, 0, 800, 600)
+    set_max.assert_called_once_with(win, 0, 0)
+    set_fs.assert_called_once_with(win, on=False)
 
 
 # ---------------------------------------------------------------------------
