@@ -1,11 +1,7 @@
-import logging
-
 from Xlib.error import BadDrawable, BadWindow
 from Xlib.xobject.drawable import Window
 
 from ..config.dimensions import ScreenDimensions
-
-logger = logging.getLogger(__name__)
 
 # Tolerate up to this many pixels of position/size drift when matching a zone.
 # 128 px covers GTK shadow offsets and minor rounding across WMs.
