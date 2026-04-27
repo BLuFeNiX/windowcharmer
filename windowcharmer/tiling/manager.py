@@ -258,24 +258,7 @@ class WindowManager:
 
     def move_and_resize(self, window: Window, x: int, y: int, width: int, height: int) -> None:
         """Fits a window into (x, y, width, height), accounting for GTK CSD and WM frames."""
-        net_fe = get_property_value(window, self.atom.frame_extents)
-        gtk_fe = self.get_gtk_frame_extents(window)
-
-        d_l = d_r = d_t = d_b = 0
-        if net_fe and len(net_fe) >= 4:
-            d_l, d_r, d_t, d_b = net_fe[0], net_fe[1], net_fe[2], net_fe[3]
-
-        if gtk_fe:
-            # Shift frame origin so visible area starts at (x, y)
-            x -= gtk_fe.left
-            y -= gtk_fe.top
-            # Expand requested size to include shadows
-            width += gtk_fe.left + gtk_fe.right
-            height += gtk_fe.top + gtk_fe.bottom
-
-        # configure() expects the client area, not the decorated size.
-        client_w = width - d_l - d_r
-        client_h = height - d_t - d_b
+        x, y, client_w, client_h = self._compute_client_geometry(window, x, y, width, height)
 
         # Maximized windows ignore configure(); clear both flags first.
         if self.is_window_maximized_vertically(window) or self.is_window_maximized_horizontally(window):
@@ -283,11 +266,34 @@ class WindowManager:
 
         window.configure(
             value_mask=X.CWX | X.CWY | X.CWWidth | X.CWHeight,
-            x=int(x),
-            y=int(y),
-            width=int(max(1, client_w)),
-            height=int(max(1, client_h)),
+            x=x,
+            y=y,
+            width=client_w,
+            height=client_h,
         )
+
+    def _compute_client_geometry(
+        self, window: Window, x: int, y: int, width: int, height: int
+    ) -> tuple[int, int, int, int]:
+        """Translate a target visible rect into the X11 client geometry.
+
+        GTK CSD windows include shadows inside the X11 window — shift the origin
+        out and grow the size to absorb them. WM-decorated windows have a frame
+        outside the X11 client — shrink the size to leave room for the frame.
+        """
+        gtk_fe = self.get_gtk_frame_extents(window)
+        if gtk_fe:
+            x -= gtk_fe.left
+            y -= gtk_fe.top
+            width += gtk_fe.left + gtk_fe.right
+            height += gtk_fe.top + gtk_fe.bottom
+
+        net_fe = get_property_value(window, self.atom.frame_extents)
+        if net_fe and len(net_fe) >= 4:
+            width -= net_fe[0] + net_fe[1]
+            height -= net_fe[2] + net_fe[3]
+
+        return x, y, max(1, width), max(1, height)
 
     def set_max_flags(self, window: Window, v: int = 1, h: int = 1) -> None:
         """Sets _NET_WM_STATE maximization flags."""
