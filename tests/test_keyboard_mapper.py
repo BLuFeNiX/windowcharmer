@@ -228,6 +228,39 @@ def test_force_canonical_restores_at_live_positions() -> None:
     assert live[_CANON_HYPER_KC] == [_HYPER_L]
 
 
+def test_refresh_finds_keysym_at_non_zero_shift_level() -> None:
+    """Hyper_L is commonly bound only at level 1 (shifted) on real keymaps,
+    e.g. `keycode 207 = NoSymbol Hyper_L NoSymbol Hyper_L`. The scan must
+    find it there — checking only level 0 caused the daemon to log
+    "Hyper_L missing" and skip the swap on every keystroke.
+    """
+    # Hyper_L at indices 1 and 3, never at 0.
+    live = {
+        _CANON_SUPER_KC: [_SUPER_L, 0, _SUPER_L, 0],
+        _CANON_HYPER_KC: [0, _HYPER_L, 0, _HYPER_L],
+    }
+    mapper = _make_mapper(
+        super_kc=_CANON_SUPER_KC,
+        hyper_kc=_CANON_HYPER_KC,
+        mapping=live,
+    )
+
+    def _live_get(kc: int, count: int) -> list[list[int]]:
+        return [live.get(kc + i, []) for i in range(count)]
+
+    def _live_write(kc: int, keysyms: list[tuple[int, ...]]) -> None:
+        live[kc] = [keysyms[0][0]]
+
+    mapper._dpy.get_keyboard_mapping.side_effect = _live_get
+    mapper._dpy.change_keyboard_mapping.side_effect = _live_write
+
+    mapper.apply_super_hyper_swap()
+
+    # Swap should have happened — keysyms now at index 0 of canon positions.
+    assert live[_CANON_SUPER_KC] == [_HYPER_L]
+    assert live[_CANON_HYPER_KC] == [_SUPER_L]
+
+
 def test_force_canonical_returns_false_when_keysym_missing() -> None:
     """If Super_L or Hyper_L isn't in the keymap, there's nothing to canonicalize."""
     live = {_CANON_SUPER_KC: [_SUPER_L]}  # Hyper_L missing

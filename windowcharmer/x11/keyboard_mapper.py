@@ -83,8 +83,15 @@ class KeyboardMapper:
         Display never sees MappingNotify events, querying get_keyboard_mapping()
         directly is the only way to get the current server state.
 
+        Scans every shift level — modifiers like Hyper_L can be placed at a
+        non-zero level by xkb layouts (Hyper_L is commonly bound only at the
+        shifted level), and missing them caused the swap to bail with
+        "Hyper_L missing from keymap" even when Xlib's keysym_to_keycode
+        cache (which scans all levels) sees it.
+
         Resets keycodes to 0 first so a keysym that has been removed from the
-        keymap (e.g. by setxkbmap) is no longer tracked at its old position.
+        keymap is no longer tracked at its old position. Picks the lowest
+        keycode where each keysym appears, matching Xlib's cache build order.
         """
         info = self._dpy.display.info
         kc_min, count = info.min_keycode, info.max_keycode - info.min_keycode + 1
@@ -95,10 +102,12 @@ class KeyboardMapper:
             if not keysyms:
                 continue
             kc = kc_min + offset
-            if keysyms[0] == self.super_l_keysym:
+            if not self.super_l_keycode and self.super_l_keysym in keysyms:
                 self.super_l_keycode = kc
-            elif keysyms[0] == self.hyper_l_keysym:
+            if not self.hyper_l_keycode and self.hyper_l_keysym in keysyms:
                 self.hyper_l_keycode = kc
+            if self.super_l_keycode and self.hyper_l_keycode:
+                break
         logger.debug("Refreshed keycodes: Super_L=%d, Hyper_L=%d", self.super_l_keycode, self.hyper_l_keycode)
 
     def refresh_keycodes(self) -> None:
