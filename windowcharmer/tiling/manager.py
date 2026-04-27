@@ -241,7 +241,7 @@ class WindowManager:
 
     def move_and_resize(self, window: Window, x: int, y: int, width: int, height: int) -> None:
         """Fits a window into (x, y, width, height), accounting for GTK CSD and WM frames."""
-        net_fe = get_property_value(window, self.atom.extents)
+        net_fe = get_property_value(window, self.atom.frame_extents)
         gtk_fe = self.get_gtk_frame_extents(window)
 
         d_l = d_r = d_t = d_b = 0
@@ -274,8 +274,8 @@ class WindowManager:
 
     def set_max_flags(self, window: Window, v: int = 1, h: int = 1) -> None:
         """Sets _NET_WM_STATE maximization flags."""
-        self.send_client_message(window, self.atom.state, (v, self.atom.v_max, 0, 0, 0))
-        self.send_client_message(window, self.atom.state, (h, self.atom.h_max, 0, 0, 0))
+        self.send_client_message(window, self.atom.wm_state, (v, self.atom.v_max, 0, 0, 0))
+        self.send_client_message(window, self.atom.wm_state, (h, self.atom.h_max, 0, 0, 0))
 
     def send_client_message(self, window: Window, atom: int, data: tuple[int, int, int, int, int]) -> None:
         """Send a _NET_WM_STATE client message to the root window."""
@@ -285,7 +285,7 @@ class WindowManager:
 
     def get_active_window(self) -> Window | None:
         """Returns the currently focused window, or None."""
-        val = get_property_value(self.root, self.atom.window)
+        val = get_property_value(self.root, self.atom.active_window)
         if val and val[0]:
             return self.d.create_resource_object("window", val[0])
         return None
@@ -302,13 +302,13 @@ class WindowManager:
 
     def get_gtk_frame_extents(self, window: Window) -> FrameExtents | None:
         """Returns GTK CSD shadow extents if present."""
-        extents = get_property_value(window, self.atom.gtk_extents)
+        extents = get_property_value(window, self.atom.gtk_frame_extents)
         if extents and len(extents) >= 4:
             return FrameExtents(extents[0], extents[1], extents[2], extents[3])
         return None
 
     def _is_maximized(self, window: Window, flag: int) -> bool:
-        state = get_property_value(window, self.atom.state)
+        state = get_property_value(window, self.atom.wm_state)
         return bool(state and flag in state)
 
     def is_window_maximized_vertically(self, window: Window) -> bool:

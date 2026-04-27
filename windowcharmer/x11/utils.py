@@ -22,7 +22,7 @@ class AtomCache:
         return self._cache[name]
 
     @property
-    def state(self) -> int:
+    def wm_state(self) -> int:
         return self._get("_NET_WM_STATE")
 
     @property
@@ -46,15 +46,15 @@ class AtomCache:
         return self._get("_NET_WORKAREA")
 
     @property
-    def window(self) -> int:
+    def active_window(self) -> int:
         return self._get("_NET_ACTIVE_WINDOW")
 
     @property
-    def extents(self) -> int:
+    def frame_extents(self) -> int:
         return self._get("_NET_FRAME_EXTENTS")
 
     @property
-    def gtk_extents(self) -> int:
+    def gtk_frame_extents(self) -> int:
         return self._get("_GTK_FRAME_EXTENTS")
 
     @property
