@@ -282,7 +282,7 @@ class WindowManager:
     def get_active_window(self) -> Window | None:
         """Returns the currently focused window, or None."""
         val = get_property_value(self.root, self.atom.window)
-        if val:
+        if val and val[0]:
             return self.d.create_resource_object("window", val[0])
         return None
 

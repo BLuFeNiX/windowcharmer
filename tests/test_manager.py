@@ -164,6 +164,30 @@ def test_resolve_tile_cycle_skipped_when_no_center(wm: WindowManager) -> None:
 
 
 # ---------------------------------------------------------------------------
+# get_active_window
+# ---------------------------------------------------------------------------
+
+
+def test_get_active_window_returns_none_for_zero_id(wm: WindowManager) -> None:
+    """_NET_ACTIVE_WINDOW = [0] means 'no active window'; do not return a Window resource for ID 0."""
+    with patch("windowcharmer.tiling.manager.get_property_value", return_value=[0]):
+        assert wm.get_active_window() is None
+
+
+def test_get_active_window_returns_none_when_property_absent(wm: WindowManager) -> None:
+    with patch("windowcharmer.tiling.manager.get_property_value", return_value=None):
+        assert wm.get_active_window() is None
+
+
+def test_get_active_window_creates_resource_for_real_id(wm: WindowManager) -> None:
+    sentinel = object()
+    wm.d.create_resource_object.return_value = sentinel
+    with patch("windowcharmer.tiling.manager.get_property_value", return_value=[0x4200001]):
+        assert wm.get_active_window() is sentinel
+    wm.d.create_resource_object.assert_called_once_with("window", 0x4200001)
+
+
+# ---------------------------------------------------------------------------
 # resize_all_windows
 # ---------------------------------------------------------------------------
 
