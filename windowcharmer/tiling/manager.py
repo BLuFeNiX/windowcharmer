@@ -31,7 +31,9 @@ class FrameExtents:
 
 
 class _ZoneSpec(NamedTuple):
-    geom: Callable[[ScreenDimensions], tuple[int, int, int, int]]
+    # geom=None marks a flag-only action (MAX, RESTORE) that touches
+    # _NET_WM_STATE without issuing a configure.
+    geom: Callable[[ScreenDimensions], tuple[int, int, int, int]] | None
     v_max: int
     h_max: int
     needs_center: bool = False
@@ -84,6 +86,8 @@ _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
     TileAction.BOTTOM_RIGHT:  _ZoneSpec(lambda d: (d.x_right,  d.y_bottom, d.w_side,   d.h_half), 0, 0),
     TileAction.TOP_CENTER:    _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_half), 0, 0, True),
     TileAction.BOTTOM_CENTER: _ZoneSpec(lambda d: (d.x_center, d.y_bottom, d.w_center, d.h_half), 0, 0, True),
+    TileAction.MAX:           _ZoneSpec(None, 1, 1),
+    TileAction.RESTORE:       _ZoneSpec(None, 0, 0),
 }
 # fmt: on
 
@@ -185,7 +189,7 @@ class WindowManager:
     def _try_animated_tile(self, action: TileAction, win: Window) -> bool:
         """Attempt to animate a tile via Cinnamon compositor. Returns True if handled."""
         spec = _TILE_SPEC.get(action)
-        if not self.dim or spec is None:
+        if not self.dim or spec is None or spec.geom is None:
             return False
         if spec.needs_center and self.config.center_width == 0:
             return False
@@ -210,7 +214,7 @@ class WindowManager:
         targets = []
         for win, action in _resolve_zone_actions(window_zones, has_center=next_center_width > 0):
             spec = _TILE_SPEC.get(action)
-            if not spec or (spec.needs_center and next_center_width == 0):
+            if not spec or spec.geom is None or (spec.needs_center and next_center_width == 0):
                 continue
             x, y, w, h = spec.geom(next_dim)
             targets.append((win.id, x, y, w, h))
@@ -228,16 +232,14 @@ class WindowManager:
 
     def _apply_tile_action(self, action: TileAction, win: Window) -> None:
         """Dispatch a tile action using the _TILE_SPEC table."""
-        if action == TileAction.MAX:
-            self.set_max_flags(win, 1, 1)
-            return
-        if action == TileAction.RESTORE:
-            self.set_max_flags(win, 0, 0)
-            return
-
         spec = _TILE_SPEC.get(action)
         if spec is None:
             logger.warning(f"Unhandled tile action: {action}")
+            return
+
+        if spec.geom is None:
+            # Flag-only action (MAX, RESTORE).
+            self.set_max_flags(win, spec.v_max, spec.h_max)
             return
 
         if not self.dim:
