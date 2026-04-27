@@ -120,8 +120,7 @@ class CinnamonAnimator:
             if _on_cinnamon():
                 logger.warning(
                     "Cinnamon detected but tile animations are disabled: PyGObject is unavailable. "
-                    "Reinstall with the cinnamon extra to enable animations: "
-                    "uv tool install --reinstall 'windowcharmer[cinnamon]'"
+                    "Reinstall with the [cinnamon] extra to enable animations (see README)."
                 )
 
     def is_available(self) -> bool:
