@@ -81,3 +81,38 @@ def test_backup_skips_when_keysym_missing() -> None:
     )
     assert mapper.super_l_orig is None
     assert mapper.hyper_l_orig is None
+
+
+def test_apply_swap_refreshes_keycodes_from_live_mapping() -> None:
+    """Regression: if the keymap shifts after init (e.g. an external setxkbmap)
+    and the XRecord thread hasn't yet refreshed our keycode cache,
+    apply_super_hyper_swap() must re-resolve keycodes from the server
+    rather than rewriting the now-stale cached positions.
+    """
+    new_super_kc = 250
+    new_hyper_kc = 251
+
+    mapper = _make_mapper(
+        super_kc=_CANON_SUPER_KC,
+        hyper_kc=_CANON_HYPER_KC,
+        mapping={_CANON_SUPER_KC: [_SUPER_L], _CANON_HYPER_KC: [_HYPER_L]},
+    )
+
+    # Simulate the live mapping shifting Super_L/Hyper_L to new keycodes.
+    info = mapper._dpy.display.info
+    info.min_keycode = 8
+    info.max_keycode = 255
+
+    new_mapping = {new_super_kc: [_SUPER_L], new_hyper_kc: [_HYPER_L]}
+
+    def _shifted_mapping(kc: int, count: int) -> list[list[int]]:
+        return [new_mapping.get(kc + i, []) for i in range(count)]
+
+    mapper._dpy.get_keyboard_mapping.side_effect = _shifted_mapping
+
+    mapper.apply_super_hyper_swap()
+
+    # The swap must have been applied to the new positions, not the old cached ones.
+    calls = mapper._dpy.change_keyboard_mapping.call_args_list
+    rewritten_keycodes = {c.args[0] for c in calls}
+    assert rewritten_keycodes == {new_super_kc, new_hyper_kc}
