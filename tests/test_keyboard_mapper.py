@@ -83,36 +83,46 @@ def test_backup_skips_when_keysym_missing() -> None:
     assert mapper.hyper_l_orig is None
 
 
-def test_apply_swap_refreshes_keycodes_from_live_mapping() -> None:
-    """Regression: if the keymap shifts after init (e.g. an external setxkbmap)
-    and the XRecord thread hasn't yet refreshed our keycode cache,
-    apply_super_hyper_swap() must re-resolve keycodes from the server
-    rather than rewriting the now-stale cached positions.
-    """
-    new_super_kc = 250
-    new_hyper_kc = 251
+def test_apply_swap_idempotent_across_self_triggered_mapping_notify() -> None:
+    """Regression: every change_keyboard_mapping call causes the X server to
+    broadcast MappingNotify, which the KeyGrabber routes back to
+    apply_super_hyper_swap(). The second call MUST detect the layout is
+    already swapped and bail — otherwise the daemon swaps, MappingNotify
+    fires, the daemon swaps again, etc., DoSing the X server until killed.
 
+    Reproduce: have get_keyboard_mapping return live state that updates as
+    change_keyboard_mapping is called, then call apply_super_hyper_swap
+    twice. The second call must not write anything more.
+    """
+    live = {_CANON_SUPER_KC: [_SUPER_L], _CANON_HYPER_KC: [_HYPER_L]}
     mapper = _make_mapper(
         super_kc=_CANON_SUPER_KC,
         hyper_kc=_CANON_HYPER_KC,
-        mapping={_CANON_SUPER_KC: [_SUPER_L], _CANON_HYPER_KC: [_HYPER_L]},
+        mapping=live,  # backup reads canonical state
     )
 
-    # Simulate the live mapping shifting Super_L/Hyper_L to new keycodes.
-    info = mapper._dpy.display.info
-    info.min_keycode = 8
-    info.max_keycode = 255
+    # Tie subsequent get/change calls to the live dict so apply_super_hyper_swap
+    # observes its own writes — exactly what happens when the X server replays
+    # the swap back via MappingNotify.
+    def _live_get(kc: int, count: int) -> list[list[int]]:
+        return [live.get(kc + i, []) for i in range(count)]
 
-    new_mapping = {new_super_kc: [_SUPER_L], new_hyper_kc: [_HYPER_L]}
+    def _live_write(kc: int, keysyms: list[tuple[int, ...]]) -> None:
+        live[kc] = [keysyms[0][0]]
 
-    def _shifted_mapping(kc: int, count: int) -> list[list[int]]:
-        return [new_mapping.get(kc + i, []) for i in range(count)]
-
-    mapper._dpy.get_keyboard_mapping.side_effect = _shifted_mapping
+    mapper._dpy.get_keyboard_mapping.side_effect = _live_get
+    mapper._dpy.change_keyboard_mapping.side_effect = _live_write
 
     mapper.apply_super_hyper_swap()
+    assert live[_CANON_SUPER_KC] == [_HYPER_L]
+    assert live[_CANON_HYPER_KC] == [_SUPER_L]
 
-    # The swap must have been applied to the new positions, not the old cached ones.
-    calls = mapper._dpy.change_keyboard_mapping.call_args_list
-    rewritten_keycodes = {c.args[0] for c in calls}
-    assert rewritten_keycodes == {new_super_kc, new_hyper_kc}
+    writes_after_first = mapper._dpy.change_keyboard_mapping.call_count
+
+    # Simulate the MappingNotify echo from the swap above re-entering
+    # apply_super_hyper_swap via the KeyGrabber callback.
+    mapper.apply_super_hyper_swap()
+
+    assert mapper._dpy.change_keyboard_mapping.call_count == writes_after_first, (
+        "Second call wrote — would loop forever in production"
+    )

@@ -23,6 +23,16 @@ class KeyboardMapper:
         self.super_l_keycode: int = self._dpy.keysym_to_keycode(self.super_l_keysym)
         self.hyper_l_keycode: int = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
 
+        # Canonical (lower=Super, higher=Hyper) positions captured once at
+        # backup time. The swap and cleanup operate on these *stable* keycodes,
+        # not on the runtime-tracked super_l_keycode/hyper_l_keycode pair —
+        # otherwise the post-swap MappingNotify echo (which the KeyGrabber
+        # routes back to apply_super_hyper_swap) would see runtime trackers
+        # already pointing at the swapped positions and re-invert the mapping
+        # forever.
+        self._canon_super_kc: int = 0
+        self._canon_hyper_kc: int = 0
+
         self.super_l_orig: list[list[int]] | None = None
         self.hyper_l_orig: list[list[int]] | None = None
 
@@ -43,18 +53,18 @@ class KeyboardMapper:
         if not self.super_l_keycode or not self.hyper_l_keycode:
             return
         try:
-            canon_super_kc = min(self.super_l_keycode, self.hyper_l_keycode)
-            canon_hyper_kc = max(self.super_l_keycode, self.hyper_l_keycode)
-            canon_super_map = self._dpy.get_keyboard_mapping(canon_super_kc, 1)
+            self._canon_super_kc = min(self.super_l_keycode, self.hyper_l_keycode)
+            self._canon_hyper_kc = max(self.super_l_keycode, self.hyper_l_keycode)
+            canon_super_map = self._dpy.get_keyboard_mapping(self._canon_super_kc, 1)
             inverted = canon_super_map and canon_super_map[0] and canon_super_map[0][0] == self.hyper_l_keysym
             if inverted:
-                self.super_l_keycode = canon_super_kc
-                self.hyper_l_keycode = canon_hyper_kc
+                self.super_l_keycode = self._canon_super_kc
+                self.hyper_l_keycode = self._canon_hyper_kc
                 self.super_l_orig = [[self.super_l_keysym]]
                 self.hyper_l_orig = [[self.hyper_l_keysym]]
             else:
-                self.super_l_orig = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
-                self.hyper_l_orig = self._dpy.get_keyboard_mapping(self.hyper_l_keycode, 1)
+                self.super_l_orig = self._dpy.get_keyboard_mapping(self._canon_super_kc, 1)
+                self.hyper_l_orig = self._dpy.get_keyboard_mapping(self._canon_hyper_kc, 1)
         except Exception as e:
             logger.error(f"Error backing up key mappings: {e}")
             logger.debug("", exc_info=True)
@@ -85,15 +95,22 @@ class KeyboardMapper:
             self._refresh_keycodes_locked()
 
     def apply_super_hyper_swap(self) -> None:
-        """Swap Super_L and Hyper_L keysyms. Idempotent — checks current state first."""
+        """Swap Super_L and Hyper_L keysyms. Idempotent across self-triggered
+        MappingNotify echoes — every change_keyboard_mapping call causes the X
+        server to broadcast MappingNotify, which the KeyGrabber routes back to
+        this method, so the idempotency check has to survive seeing the layout
+        we just wrote.
+        """
         with self._lock:
             try:
-                # Refresh first: a MappingNotify may have arrived from the X server
-                # without the XRecord thread having run refresh_keycodes() yet,
-                # which would leave self.{super,hyper}_l_keycode pointing at stale
-                # positions. Without this, the swap could overwrite the wrong keys.
-                self._refresh_keycodes_locked()
-                current_map = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
+                if not self._canon_super_kc or not self._canon_hyper_kc:
+                    return
+                # Read the keysym at the canonical Super position. Pre-swap it
+                # holds Super_L; post-swap it holds Hyper_L. Using the canonical
+                # (immutable) keycode here, not a runtime-tracked one, is what
+                # makes this idempotent — a refresh-then-check approach reads
+                # back our own write and concludes "not yet swapped" forever.
+                current_map = self._dpy.get_keyboard_mapping(self._canon_super_kc, 1)
                 already_swapped = (
                     current_map
                     and len(current_map) > 0
@@ -105,8 +122,8 @@ class KeyboardMapper:
                     return
 
                 logger.info("Swapping Super_L and Hyper_L...")
-                self._change_keyboard_mapping(self.super_l_keycode, self.hyper_l_keysym)
-                self._change_keyboard_mapping(self.hyper_l_keycode, self.super_l_keysym)
+                self._change_keyboard_mapping(self._canon_super_kc, self.hyper_l_keysym)
+                self._change_keyboard_mapping(self._canon_hyper_kc, self.super_l_keysym)
                 self._dpy.sync()
             except Exception as e:
                 logger.error(f"Error rebinding keys: {e}")
@@ -143,7 +160,7 @@ class KeyboardMapper:
         self._dpy.change_keyboard_mapping(keycode, [(new_keysym,)])
 
     def cleanup(self) -> None:
-        """Restore the original keysym assignments."""
+        """Restore the original keysym assignments at their canonical positions."""
         logger.info("Restoring keyboard mapping...")
         with self._lock:
             try:
@@ -152,8 +169,8 @@ class KeyboardMapper:
                         "Original key mappings unavailable — keyboard mapping not restored (backup failed at startup)."
                     )
                     return
-                self._dpy.change_keyboard_mapping(self.super_l_keycode, self.super_l_orig)
-                self._dpy.change_keyboard_mapping(self.hyper_l_keycode, self.hyper_l_orig)
+                self._dpy.change_keyboard_mapping(self._canon_super_kc, self.super_l_orig)
+                self._dpy.change_keyboard_mapping(self._canon_hyper_kc, self.hyper_l_orig)
                 self._dpy.sync()
             except Exception as e:
                 logger.warning(f"Error restoring keyboard mapping: {e}")
