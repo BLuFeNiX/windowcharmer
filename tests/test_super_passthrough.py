@@ -40,7 +40,7 @@ def test_super_held_too_long_suppresses_callback() -> None:
     tracker, cb = _tracker()
     tracker.handle_event(_Ev(X.KeyPress, _SUPER))
     # Backdate the press so the timeout fires on the next event
-    tracker._super_press_time = time.time() - (SuperPassthroughTracker._SUPER_TIMEOUT + 1)
+    tracker._super_press_time = time.monotonic() - (SuperPassthroughTracker._SUPER_TIMEOUT + 1)
     tracker.handle_event(_Ev(X.KeyRelease, _SUPER))
     cb.assert_not_called()
 
