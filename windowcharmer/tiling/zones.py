@@ -68,4 +68,8 @@ def determine_tile_zone(
         elif within(x, dim.x_center):
             h_pos = "right-center"
 
-    return f"{v_pos}-{h_pos}".removeprefix("full-")
+    # "full" height is implicit in TileAction zone strings — LEFT, not FULL_LEFT —
+    # so drop the prefix when the window spans the workarea vertically.
+    if v_pos == "full":
+        return h_pos
+    return f"{v_pos}-{h_pos}"
