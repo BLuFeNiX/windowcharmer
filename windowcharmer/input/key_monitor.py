@@ -66,7 +66,11 @@ class KeyMonitor:
             self.ctx = None
 
     def stop(self) -> None:
-        if self.ctx is None:
+        # Snapshot the context handle before any blocking call so a concurrent
+        # start() finalize that nulls self.ctx can't leave us calling
+        # record_disable_context with None partway through.
+        ctx = self.ctx
+        if ctx is None:
             return
         # record_disable_context must be called from a *different* Display connection
         # than record_enable_context — python-xlib is not thread-safe on a single Display.
@@ -77,7 +81,7 @@ class KeyMonitor:
             logger.debug("KeyMonitor.stop: failed to open display: %s", e)
             return
         try:
-            stop_dpy.record_disable_context(self.ctx)
+            stop_dpy.record_disable_context(ctx)
             stop_dpy.flush()
         except Exception as e:
             logger.debug("KeyMonitor.stop: failed to disable record context: %s", e)
