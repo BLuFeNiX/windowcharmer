@@ -13,7 +13,7 @@ from Xlib.protocol import rq
 from . import __version__
 from .config.actions import TileAction
 from .config.keybindings import load_keybindings
-from .input.key_grabber import KeyGrabber
+from .input.key_grabber import KeyGrabber, KeyGrabberError
 from .input.services import InputServices
 from .input.super_passthrough import SuperPassthroughTracker
 from .tiling.manager import WindowManager
@@ -55,9 +55,8 @@ class WindowCharmerApp:
     def do_action(self, action: TileAction) -> None:
         """Execute a window manager action (tile, center, etc.)"""
         if action == TileAction.EXIT:
-            # SystemExit is not Exception, so it propagates through KeyGrabber._run_loop
-            # and unwinds cleanly through the try/finally in run_daemon.
-            sys.exit()
+            self.grabber.stop()
+            return
         self.wm.execute_action(action)
 
     def _setup_key_bindings(self) -> dict[str, Callable[[], None]]:
@@ -97,11 +96,8 @@ class WindowCharmerApp:
         try:
             logger.info("Daemon started. Press Ctrl+C to exit.")
             self.grabber.start()
-        except (KeyboardInterrupt, SystemExit):
+        except KeyboardInterrupt:
             pass
-        except Exception as e:
-            logger.error(f"Error in main loop: {e}")
-            logger.debug("", exc_info=True)
         finally:
             with self.timer_lock:
                 if self.debounce_timer:
@@ -140,7 +136,12 @@ def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
     app = WindowCharmerApp(no_animate=args.no_animate)
-    app.run_daemon()
+    try:
+        app.run_daemon()
+    except KeyGrabberError as e:
+        logger.error(f"Daemon stopped: {e}")
+        logger.debug("", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

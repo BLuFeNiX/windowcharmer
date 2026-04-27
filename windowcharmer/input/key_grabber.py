@@ -1,5 +1,4 @@
 import logging
-import sys
 import time
 from collections.abc import Callable
 from typing import ClassVar
@@ -12,6 +11,10 @@ from Xlib.xobject.drawable import Window
 logger = logging.getLogger(__name__)
 
 _BAD_ACCESS_RETRY_DELAY = 1.0
+
+
+class KeyGrabberError(Exception):
+    """Raised when the grabber loop cannot continue (e.g. BadAccess persists)."""
 
 
 class KeyGrabber:
@@ -30,6 +33,7 @@ class KeyGrabber:
         self.modifier = modifier
         self.keycode_map: dict[int, Callable[[], None]] = {}
         self.on_mapping_notify = on_mapping_notify
+        self._stopped = False
 
     def _get_keycode(self, key_name: str) -> int:
         """Return the X11 keycode for key_name, or 0 if unknown."""
@@ -68,31 +72,20 @@ class KeyGrabber:
             except Exception as e:
                 logger.debug(f"Failed to ungrab keycode {keycode} mod {mod}: {e}")
 
+    def stop(self) -> None:
+        """Request a clean exit from start(). The loop checks this between events."""
+        self._stopped = True
+
     def start(self) -> None:
-        """Main event loop. Retries once on BadAccess before exiting."""
+        """Main event loop. Retries once on BadAccess; raises KeyGrabberError on failure.
+
+        Returns normally when stop() is called.
+        """
         for attempt in (1, 2):
             self.grab_keys()
             try:
-                while True:
-                    event = self.dpy.next_event()
-
-                    if event.type == X.KeyPress:
-                        keycode = event.detail
-                        if keycode in self.keycode_map:
-                            self.keycode_map[keycode]()
-
-                    elif event.type == X.MappingNotify:
-                        self.dpy.refresh_keyboard_mapping(event)
-                        logger.debug(f"MappingNotify: request={event.request}")
-
-                        if event.request == X.MappingKeyboard:
-                            if self.on_mapping_notify:
-                                self.on_mapping_notify(event)
-                            self.ungrab_keys()
-                            # grab_keys() re-reads current keycodes from the X server, so
-                            # key_combinations (keysym→callback) doesn't need to be rebuilt.
-                            self.grab_keys()
-
+                self._run_loop()
+                return
             except BadAccess as e:
                 self.ungrab_keys()
                 if attempt < 2:
@@ -102,9 +95,28 @@ class KeyGrabber:
                     )
                     time.sleep(_BAD_ACCESS_RETRY_DELAY)
                     continue
-                logger.error("KeyGrabber: BadAccess persists after retry — exiting.")
-                sys.exit(1)
+                raise KeyGrabberError("BadAccess persists after retry") from e
             except Exception as e:
-                logger.error(f"KeyGrabber error: {e}")
-                logger.debug("", exc_info=True)
-                sys.exit(1)
+                self.ungrab_keys()
+                raise KeyGrabberError(f"event loop crashed: {e}") from e
+
+    def _run_loop(self) -> None:
+        while not self._stopped:
+            event = self.dpy.next_event()
+
+            if event.type == X.KeyPress:
+                keycode = event.detail
+                if keycode in self.keycode_map:
+                    self.keycode_map[keycode]()
+
+            elif event.type == X.MappingNotify:
+                self.dpy.refresh_keyboard_mapping(event)
+                logger.debug(f"MappingNotify: request={event.request}")
+
+                if event.request == X.MappingKeyboard:
+                    if self.on_mapping_notify:
+                        self.on_mapping_notify(event)
+                    self.ungrab_keys()
+                    # grab_keys() re-reads current keycodes from the X server, so
+                    # key_combinations (keysym→callback) doesn't need to be rebuilt.
+                    self.grab_keys()
