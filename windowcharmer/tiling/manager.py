@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -52,6 +52,23 @@ def _remap_zone_no_center(zone: str) -> str:
     Center-anchored zones collapse to the left column; non-center zones pass through.
     """
     return _REMAP_NO_CENTER.get(zone, zone)
+
+
+def _resolve_zone_actions(
+    window_zones: Iterable[tuple[Window, str]],
+    ratio_idx: int,
+) -> Iterator[tuple[Window, TileAction]]:
+    """Yield (win, TileAction) pairs, applying the no-center remap when ratio_idx == 0.
+
+    Skips zones that don't correspond to a TileAction (e.g. 'top-left-center').
+    """
+    for win, zone in window_zones:
+        if ratio_idx == 0:
+            zone = _remap_zone_no_center(zone)
+        try:
+            yield win, TileAction(zone)
+        except ValueError:
+            continue
 
 
 # fmt: off
@@ -185,17 +202,9 @@ class WindowManager:
         next_dim = ScreenDimensions(self.config.screen_width, self.dim.wa_y, self.dim.wa_h, next_center_width)
 
         targets = []
-        for win, zone in window_zones:
-            if next_idx == 0:
-                zone = _remap_zone_no_center(zone)
-            try:
-                action = TileAction(zone)
-            except ValueError:
-                continue
+        for win, action in _resolve_zone_actions(window_zones, next_idx):
             spec = _TILE_SPEC.get(action)
-            if not spec:
-                continue
-            if spec.needs_center and next_center_width == 0:
+            if not spec or (spec.needs_center and next_center_width == 0):
                 continue
             x, y, w, h = spec.geom(next_dim)
             targets.append((win.id, x, y, w, h))
@@ -337,13 +346,7 @@ class WindowManager:
         self.config.next_ratio(step)
         self._update_state()
 
-        for win, zone in window_zones:
-            if self.config.ratio_idx == 0:
-                zone = _remap_zone_no_center(zone)
-            try:
-                action = TileAction(zone)
-            except ValueError:
-                continue
+        for win, action in _resolve_zone_actions(window_zones, self.config.ratio_idx):
             self._apply_tile_action(action, win)
 
     def _collect_zoned_windows(self) -> list[tuple[Window, str]]:
