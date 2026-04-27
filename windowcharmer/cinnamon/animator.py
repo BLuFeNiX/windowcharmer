@@ -118,8 +118,13 @@ def _make_gi_caller() -> Callable[[str], tuple[bool, str]] | None:
 class CinnamonAnimator:
     def __init__(self, disabled: bool = False) -> None:
         self._available: bool | None = False if disabled else None
-        gi_caller = _make_gi_caller()
-        self._call: Callable[[str], tuple[bool, str]] = gi_caller or _dbus_via_subprocess
+        # Skip the gi/D-Bus probe when disabled so we don't open a session bus
+        # connection we'll never use.
+        self._call: Callable[[str], tuple[bool, str]]
+        if disabled:
+            self._call = _dbus_via_subprocess
+        else:
+            self._call = _make_gi_caller() or _dbus_via_subprocess
 
     def is_available(self) -> bool:
         if self._available is None:
