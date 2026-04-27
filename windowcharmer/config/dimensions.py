@@ -38,4 +38,6 @@ class ScreenDimensions:
         self.y_bottom = self.wa_y + h_half
 
         self.w_side = side_width
-        self.w_center = self.center_width
+        # Absorb the leftover pixel from odd widths into the center column so
+        # left|center|right tile to exactly screen_width.
+        self.w_center = self.screen_width - 2 * side_width

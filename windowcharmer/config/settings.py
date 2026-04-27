@@ -53,7 +53,7 @@ class Config:
         self.ratio_idx = self._desktop_ratios.get(self.active_desktop, self._DEFAULT_RATIO_IDX)
 
         self.ratio = self.supported_ratios[self.ratio_idx]
-        self.center_width = int(self.screen_width * self.ratio)
+        self.center_width = round(self.screen_width * self.ratio)
 
     def next_ratio(self, step: int = 1) -> None:
         """Change the layout ratio for the active desktop."""

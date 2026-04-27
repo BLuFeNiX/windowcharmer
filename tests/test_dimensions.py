@@ -15,8 +15,20 @@ from windowcharmer.config.dimensions import ScreenDimensions
 def test_column_adjacency(screen_width: int, wa_y: int, wa_h: int, center_width: int) -> None:
     dim = ScreenDimensions(screen_width, wa_y, wa_h, center_width)
     assert dim.x_left + dim.w_side == dim.x_center
-    # Integer division of side_width may leave a 1-pixel gap on odd-remainder screens.
-    assert abs(dim.x_center + dim.w_center - dim.x_right) <= 1
+    assert dim.x_center + dim.w_center == dim.x_right
+
+
+@pytest.mark.parametrize(
+    "screen_width, center_width",
+    [
+        (1921, 768),  # 3-column odd width
+        (1920, 768),  # 3-column even width
+        (1921, 0),  # 2-column odd width — leftover sits in w_center (unused)
+    ],
+)
+def test_columns_cover_full_width(screen_width: int, center_width: int) -> None:
+    dim = ScreenDimensions(screen_width, 0, 1080, center_width)
+    assert dim.w_side + dim.w_center + dim.w_side == screen_width
 
 
 @pytest.mark.parametrize(

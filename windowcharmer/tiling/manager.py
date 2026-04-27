@@ -184,7 +184,7 @@ class WindowManager:
         # Compute what the layout will look like after the ratio step, without
         # committing the change yet so the fallback path can do it if needed.
         next_idx = (self.config.ratio_idx + step) % len(Config.supported_ratios)
-        next_center_width = int(self.screen_width * Config.supported_ratios[next_idx])
+        next_center_width = round(self.screen_width * Config.supported_ratios[next_idx])
         next_dim = ScreenDimensions(self.screen_width, self.dim.wa_y, self.dim.wa_h, next_center_width)
 
         targets = []

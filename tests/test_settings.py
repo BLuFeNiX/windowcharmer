@@ -54,7 +54,7 @@ def test_reload_preserves_ratio_idx() -> None:
 
 def test_center_width_computed() -> None:
     cfg = Config(2560)
-    expected = int(2560 * cfg.supported_ratios[cfg.ratio_idx])
+    expected = round(2560 * cfg.supported_ratios[cfg.ratio_idx])
     assert cfg.center_width == expected
 
 
