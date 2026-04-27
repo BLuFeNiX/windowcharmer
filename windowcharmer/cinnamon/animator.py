@@ -138,32 +138,46 @@ class CinnamonAnimator:
                 self._available = False
         return self._available is True
 
+    def _invoke(self, script: str) -> str | None:
+        """Run a script via D-Bus. On transport failure, reset cached
+        availability so the next is_available() call re-probes — otherwise
+        every animation attempt would block on the dead bus until restart.
+        Returns the eval result string, or None on transport failure.
+        """
+        assert self._call is not None  # is_available() guarantees this
+        try:
+            ok, val = self._call(script)
+        except Exception as e:
+            logger.debug("cinnamon eval error: %s", e)
+            self._available = None
+            return None
+        if not ok:
+            logger.debug("cinnamon eval rejected: val=%r", val)
+            self._available = None
+            return None
+        return val
+
     def animate_batch(self, targets: list[tuple[int, int, int, int, int]]) -> bool:
         """Animate multiple windows simultaneously. targets: [(xid, tx, ty, tw, th), ...]"""
         if not self.is_available() or not targets:
             return False
-        assert self._call is not None  # is_available() guarantees this
-        try:
-            ok, val = self._call(_make_batch_script(targets))
-            if not ok or val != "1":
-                logger.debug("cinnamon animate_batch: ok=%s val=%r", ok, val)
-                return False
-            return True
-        except Exception as e:
-            logger.debug("cinnamon animate_batch error: %s", e)
+        val = self._invoke(_make_batch_script(targets))
+        if val is None:
             return False
+        if val != "1":
+            logger.debug("cinnamon animate_batch: unexpected val=%r", val)
+            return False
+        return True
 
     def animate(self, xid: int, tx: int, ty: int, tw: int, th: int) -> bool:
         """Slide window to (tx, ty, tw, th) via Cinnamon compositor animation."""
         if not self.is_available():
             return False
-        assert self._call is not None  # is_available() guarantees this
-        try:
-            ok, val = self._call(_make_script(xid, tx, ty, tw, th))
-            if not ok or val != "1":
-                logger.debug("cinnamon animate: ok=%s val=%r xid=%d", ok, val, xid)
-                return False
-            return True
-        except Exception as e:
-            logger.debug("cinnamon animate error: %s", e)
+        val = self._invoke(_make_script(xid, tx, ty, tw, th))
+        if val is None:
             return False
+        if val != "1":
+            # val == "0" means actor not found — window-specific, don't invalidate.
+            logger.debug("cinnamon animate: actor not found xid=%d", xid)
+            return False
+        return True
