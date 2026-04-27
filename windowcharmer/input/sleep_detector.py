@@ -28,13 +28,10 @@ class WakeFromSleepDetector:
     def start(self) -> None:
         """Poll for wall-clock drift until stop_event is set."""
         logger.info("Starting WakeFromSleepDetector...")
-        try:
-            while not self._stop_event.is_set():
-                time.sleep(self.wait_time)
-                now = time.time()
-                if (now - self.last_check) > (self.wait_time + self.threshold_time):
-                    logger.info(f"System wake detected (time jump: {now - self.last_check:.2f}s)")
-                    self.callback()
-                self.last_check = now
-        except (KeyboardInterrupt, SystemExit):
-            logger.info("Exiting wake detection loop...")
+        while not self._stop_event.is_set():
+            time.sleep(self.wait_time)
+            now = time.time()
+            if (now - self.last_check) > (self.wait_time + self.threshold_time):
+                logger.info(f"System wake detected (time jump: {now - self.last_check:.2f}s)")
+                self.callback()
+            self.last_check = now
