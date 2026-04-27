@@ -394,3 +394,83 @@ def test_move_and_resize_skips_clear_when_not_maximized(wm: WindowManager) -> No
     assert kwargs["y"] == 20
     assert kwargs["width"] == 100
     assert kwargs["height"] == 200
+
+
+# ---------------------------------------------------------------------------
+# _apply_tile_action — center-needing actions in two-column mode
+# ---------------------------------------------------------------------------
+
+
+def test_apply_tile_action_warns_and_skips_when_center_required_but_zero(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Pressing CENTER (or any needs_center action) when center_width==0 must
+    log a warning rather than silently no-op — otherwise the user has no signal
+    that the keypress was acknowledged but ignored.
+    """
+    import logging
+
+    from windowcharmer.config.actions import TileAction
+    from windowcharmer.config.dimensions import ScreenDimensions
+
+    wm = _make_wm()
+    wm.dim = ScreenDimensions(0, 0, 1920, 1080, 0)  # center_width = 0
+    wm.config.center_width = 0
+    win = MagicMock()
+
+    caplog.set_level(logging.WARNING, logger="windowcharmer.tiling.manager")
+    with patch.object(wm, "move_and_resize") as move_and_resize:
+        wm._apply_tile_action(TileAction.CENTER, win)
+
+    move_and_resize.assert_not_called()
+    assert any(
+        "center column" in record.message and "CENTER" in record.message.upper()
+        for record in caplog.records
+    ), f"expected warning about center-required action; got {[r.message for r in caplog.records]}"
+
+
+# ---------------------------------------------------------------------------
+# _try_animated_tile / _apply_tile_action — no _NET_WM_STATE writes for tiles
+# ---------------------------------------------------------------------------
+
+
+def test_apply_tile_action_does_not_set_max_flags_for_tile(wm: WindowManager) -> None:
+    """Tile actions must not direct-write _NET_WM_STATE — that path is reserved
+    for MAX/RESTORE. Direct-writing on tiles caused Muffin focus-stack and
+    repositioning churn (visible as window shake / focus jumps to previous).
+    """
+    from windowcharmer.config.actions import TileAction
+    from windowcharmer.config.dimensions import ScreenDimensions
+
+    wm.dim = ScreenDimensions(0, 0, 1920, 1080, 0)
+    wm.config.center_width = 0
+    win = MagicMock()
+
+    with (
+        patch.object(wm, "move_and_resize") as move_and_resize,
+        patch.object(wm, "set_max_flags") as set_flags,
+    ):
+        wm._apply_tile_action(TileAction.LEFT, win)
+
+    move_and_resize.assert_called_once()
+    set_flags.assert_not_called()
+
+
+def test_apply_tile_action_sets_max_flags_for_max_action(wm: WindowManager) -> None:
+    """MAX is a flag-only action — it must set both max flags."""
+    from windowcharmer.config.actions import TileAction
+
+    win = MagicMock()
+    with patch.object(wm, "set_max_flags") as set_flags:
+        wm._apply_tile_action(TileAction.MAX, win)
+    set_flags.assert_called_once_with(win, 1, 1)
+
+
+def test_apply_tile_action_sets_max_flags_for_restore_action(wm: WindowManager) -> None:
+    """RESTORE clears both max flags."""
+    from windowcharmer.config.actions import TileAction
+
+    win = MagicMock()
+    with patch.object(wm, "set_max_flags") as set_flags:
+        wm._apply_tile_action(TileAction.RESTORE, win)
+    set_flags.assert_called_once_with(win, 0, 0)

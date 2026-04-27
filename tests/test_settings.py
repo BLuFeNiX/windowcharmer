@@ -99,3 +99,31 @@ def test_center_width_uses_workarea_width() -> None:
     cfg.set_state(1860, 0)  # 60px left panel
     expected = round(1860 * cfg.supported_ratios[cfg.ratio_idx])
     assert cfg.center_width == expected
+
+
+def test_peek_center_width_does_not_commit() -> None:
+    """peek_center_width returns what next_ratio(step) would produce without mutating state."""
+    cfg = Config(2560)
+    initial_idx = cfg.ratio_idx
+    initial_center = cfg.center_width
+
+    expected = round(2560 * cfg.supported_ratios[(initial_idx + 1) % len(cfg.supported_ratios)])
+    assert cfg.peek_center_width(1) == expected
+
+    # State unchanged.
+    assert cfg.ratio_idx == initial_idx
+    assert cfg.center_width == initial_center
+
+
+def test_peek_center_width_zero_step_matches_current() -> None:
+    """peek_center_width(0) returns the current center_width."""
+    cfg = Config(2560)
+    assert cfg.peek_center_width(0) == cfg.center_width
+
+
+def test_peek_center_width_matches_next_ratio_after_commit() -> None:
+    """peek_center_width(step) must agree with the value next_ratio(step) commits."""
+    cfg = Config(2560)
+    predicted = cfg.peek_center_width(1)
+    cfg.next_ratio(1)
+    assert cfg.center_width == predicted
