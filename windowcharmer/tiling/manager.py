@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -149,40 +150,45 @@ class WindowManager:
                 return TileAction.RIGHT
         return action
 
+    @contextmanager
+    def _grabbed(self) -> Iterator[None]:
+        """Hold an X server grab for the duration of the block."""
+        self.d.grab_server()
+        try:
+            yield
+        finally:
+            self.d.ungrab_server()
+            self.d.flush()
+
     def execute_action(self, action: TileAction) -> None:
         """Entry point for a tiling action, called from the KeyGrabber event loop on the main thread."""
         try:
             # Read state before grabbing the server to minimise the held window.
             self._update_state()
+
+            if action in (TileAction.BIGGER, TileAction.SMALLER):
+                step = 1 if action == TileAction.BIGGER else -1
+                # Animated path runs outside grab_server because Cinnamon is a
+                # separate X11 client and would deadlock against our grab.
+                if self._try_animated_resize_all(step):
+                    return
+                with self._grabbed():
+                    self.resize_all_windows(step)
+                return
+
             win = self.get_active_window()
-
-            if win and action in (TileAction.LEFT, TileAction.RIGHT):
+            if win is None:
+                return
+            if action in (TileAction.LEFT, TileAction.RIGHT):
                 action = self._resolve_tile_cycle(action, win)
-
-            # Tile actions can be animated via Cinnamon's compositor. This must
-            # run outside grab_server because Cinnamon is a separate X11 client.
-            if action in _TILE_SPEC and win and self._try_animated_tile(action, win):
+            if action in _TILE_SPEC and self._try_animated_tile(action, win):
                 return
-            if action == TileAction.BIGGER and self._try_animated_resize_all(1):
-                return
-            if action == TileAction.SMALLER and self._try_animated_resize_all(-1):
-                return
-
-            self.d.grab_server()
-            try:
-                if action == TileAction.BIGGER:
-                    self.resize_all_windows(1)
-                elif action == TileAction.SMALLER:
-                    self.resize_all_windows(-1)
-                elif win:
-                    self._apply_tile_action(action, win)
-            finally:
-                self.d.ungrab_server()
-                self.d.flush()
+            with self._grabbed():
+                self._apply_tile_action(action, win)
         except (ConnectionClosedError, DisplayConnectionError):
             raise  # unrecoverable; propagate so the supervisor can restart
         except Exception as e:
-            logger.error(f"Error executing action {action}: {e}")
+            logger.error("Error executing action %s: %s", action, e)
             logger.debug("", exc_info=True)
 
     def _try_animated_tile(self, action: TileAction, win: Window) -> bool:
