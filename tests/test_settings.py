@@ -36,8 +36,8 @@ def test_per_desktop_ratios() -> None:
     idx_desktop0 = cfg.ratio_idx
 
     cfg.set_state(2560, 2560, 1)
-    # Desktop 1 should still be at default index (2)
-    assert cfg.ratio_idx == 2
+    # Desktop 1 should still be at the default index
+    assert cfg.ratio_idx == Config._DEFAULT_RATIO_IDX
 
     cfg.set_state(2560, 2560, 0)
     # Back to desktop 0, ratio should be remembered
