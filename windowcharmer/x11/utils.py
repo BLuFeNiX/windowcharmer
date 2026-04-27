@@ -4,6 +4,7 @@ from typing import cast
 
 from Xlib import X
 from Xlib.display import Display
+from Xlib.error import BadDrawable, BadWindow
 from Xlib.xobject.drawable import Window
 
 logger = logging.getLogger(__name__)
@@ -67,11 +68,15 @@ class AtomCache:
 
 
 def get_property_value(window: Window, atom: int, property_type: int = X.AnyPropertyType) -> Sequence[int] | None:
-    """Fetch a window property value, returning None on failure or absence."""
+    """Fetch a window property value, returning None on failure or absence.
+
+    BadWindow/BadDrawable (window destroyed mid-call) are swallowed; connection
+    errors and other XErrors propagate so callers can react to a dead display.
+    """
     try:
         prop = window.get_full_property(atom, property_type)
         if prop and prop.value is not None:
             return cast(Sequence[int], prop.value)
-    except Exception as e:
-        logger.debug(f"get_property_value failed: {e}")
+    except (BadWindow, BadDrawable) as e:
+        logger.debug("get_property_value failed: %s", e)
     return None
