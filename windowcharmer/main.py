@@ -99,11 +99,19 @@ class WindowCharmerApp:
         except KeyboardInterrupt:
             pass
         finally:
-            with self.timer_lock:
-                if self.debounce_timer:
-                    self.debounce_timer.cancel()
             self.grabber.ungrab_keys()
+            # Stop input monitors first so no new debounce timers can be scheduled,
+            # then cancel + join the in-flight one. Joining guarantees the rebind
+            # has completed before mapper.cleanup() restores the canonical mapping
+            # — otherwise a late-firing rebind would re-swap after cleanup.
             self.input_services.stop_all()
+            with self.timer_lock:
+                timer = self.debounce_timer
+                self.debounce_timer = None
+            if timer:
+                timer.cancel()
+                timer.join()
+                logger.debug("Joined debounce timer at shutdown")
             self.mapper.cleanup()
             DisplayPool.close_all()
 
