@@ -14,7 +14,7 @@ ANIMATION_DURATION_MS = 180
 ANIMATION_DEADLINE_MS = 50
 
 # How long to wait before re-probing after a failed availability check.
-_PROBE_COOLDOWN_SECONDS = 30.0
+_PROBE_COOLDOWN_S = 30.0
 
 
 _ANIMATE_FN = """\
@@ -30,7 +30,7 @@ function _wcAnimate(actor, tx, ty, tw, th, dur) {
     Main.animations_enabled = false;
     try {
         if (mw.maximized_horizontally || mw.maximized_vertically)
-            mw.unmaximize(3);
+            mw.unmaximize(3);  // Meta.MaximizeFlags.BOTH
     } finally {
         Main.animations_enabled = prevAnim;
     }
@@ -44,35 +44,32 @@ function _wcAnimate(actor, tx, ty, tw, th, dur) {
         translation_x: 0,
         translation_y: 0,
         duration: dur,
-        mode: 3
+        mode: 3  // Clutter.AnimationMode.EASE_IN_OUT_QUAD
     });
 }"""
 
 
-def _make_script(xid: int, tx: int, ty: int, tw: int, th: int) -> str:
-    return f"""\
-(function() {{
-{_ANIMATE_FN}
-    let actor = global.get_window_actors().find(a => a.meta_window.get_xwindow() === {xid});
-    if (!actor) return 0;
-    _wcAnimate(actor, {tx}, {ty}, {tw}, {th}, {ANIMATION_DURATION_MS});
-    return 1;
-}})()"""
-
-
 def _make_batch_script(targets: list[tuple[int, int, int, int, int]]) -> str:
+    """Build the JS payload for animating a batch of windows.
+
+    Returns the count of actors actually animated, so a single-window animate
+    can distinguish 'actor not found' (0) from success (1) and fall back to
+    the non-animated configure() path.
+    """
     entries = ", ".join(f"{{xid:{xid},tx:{tx},ty:{ty},tw:{tw},th:{th}}}" for xid, tx, ty, tw, th in targets)
     return f"""\
 (function() {{
 {_ANIMATE_FN}
     let windows = [{entries}];
     let actors = global.get_window_actors();
+    let count = 0;
     for (let w of windows) {{
         let actor = actors.find(a => a.meta_window.get_xwindow() === w.xid);
         if (!actor) continue;
         _wcAnimate(actor, w.tx, w.ty, w.tw, w.th, {ANIMATION_DURATION_MS});
+        count++;
     }}
-    return 1;
+    return count;
 }})()"""
 
 
@@ -133,7 +130,7 @@ class CinnamonAnimator:
         if self._available is True:
             return True
         now = time.monotonic()
-        if self._available is None or (now - self._last_probe) >= _PROBE_COOLDOWN_SECONDS:
+        if self._available is None or (now - self._last_probe) >= _PROBE_COOLDOWN_S:
             self._last_probe = now
             try:
                 ok, val = self._call("1+1")
@@ -148,9 +145,13 @@ class CinnamonAnimator:
         every animation attempt would block on the dead bus until restart.
         Returns the eval result string, or None on transport failure.
         """
-        assert self._call is not None  # is_available() guarantees this
+        # is_available() guarantees self._call is not None at every call site,
+        # but bind to a local so the type narrowing survives without an assert.
+        call = self._call
+        if call is None:
+            return None
         try:
-            ok, val = self._call(script)
+            ok, val = call(script)
         except Exception as e:
             logger.debug("cinnamon eval error: %s", e)
             self._available = None
@@ -162,26 +163,22 @@ class CinnamonAnimator:
         return val
 
     def animate_batch(self, targets: list[tuple[int, int, int, int, int]]) -> bool:
-        """Animate multiple windows simultaneously. targets: [(xid, tx, ty, tw, th), ...]"""
+        """Animate multiple windows simultaneously. targets: [(xid, tx, ty, tw, th), ...]
+
+        Returns True if at least one actor was animated. Per-window misses
+        (actor not found) are not a Cinnamon-down signal, so cached
+        availability is left intact.
+        """
         if not self.is_available() or not targets:
             return False
         val = self._invoke(_make_batch_script(targets))
         if val is None:
             return False
-        if val != "1":
-            logger.debug("cinnamon animate_batch: unexpected val=%r", val)
+        if val == "0":
+            logger.debug("cinnamon animate_batch: no actors found for %d target(s)", len(targets))
             return False
         return True
 
     def animate(self, xid: int, tx: int, ty: int, tw: int, th: int) -> bool:
         """Slide window to (tx, ty, tw, th) via Cinnamon compositor animation."""
-        if not self.is_available():
-            return False
-        val = self._invoke(_make_script(xid, tx, ty, tw, th))
-        if val is None:
-            return False
-        if val != "1":
-            # val == "0" means actor not found — window-specific, don't invalidate.
-            logger.debug("cinnamon animate: actor not found xid=%d", xid)
-            return False
-        return True
+        return self.animate_batch([(xid, tx, ty, tw, th)])
