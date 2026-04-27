@@ -34,6 +34,10 @@ def _make_mapper(super_kc: int, hyper_kc: int, mapping: dict[int, list[int]]) ->
 
     dpy.keysym_to_keycode.side_effect = _keysym_to_keycode
     dpy.get_keyboard_mapping.side_effect = _get_keyboard_mapping
+    # _refresh_keycodes_locked iterates over [min_keycode, max_keycode] —
+    # set realistic X server bounds so the mapping scan returns ints.
+    dpy.display.info.min_keycode = 8
+    dpy.display.info.max_keycode = 255
 
     with patch("windowcharmer.x11.keyboard_mapper.DisplayPool") as pool:
         pool.get_display.return_value = dpy
