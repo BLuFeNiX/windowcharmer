@@ -306,11 +306,13 @@ class WindowManager:
             width += gtk_fe.left + gtk_fe.right
             height += gtk_fe.top + gtk_fe.bottom
 
-        net_fe = get_property_value(window, self.atom.frame_extents)
-        if net_fe and len(net_fe) >= 4:
-            width -= net_fe[0] + net_fe[1]
-            height -= net_fe[2] + net_fe[3]
+        net_fe = self.get_net_frame_extents(window)
+        if net_fe:
+            width -= net_fe.left + net_fe.right
+            height -= net_fe.top + net_fe.bottom
 
+        if width < 1 or height < 1:
+            logger.debug("Frame-extents math underflow: requested %dx%d → clamped to 1x1", width, height)
         return x, y, max(1, width), max(1, height)
 
     def set_max_flags(self, window: Window, v: int = 1, h: int = 1) -> None:
@@ -344,6 +346,13 @@ class WindowManager:
     def get_gtk_frame_extents(self, window: Window) -> FrameExtents | None:
         """Returns GTK CSD shadow extents if present."""
         extents = get_property_value(window, self.atom.gtk_frame_extents)
+        if extents and len(extents) >= 4:
+            return FrameExtents(extents[0], extents[1], extents[2], extents[3])
+        return None
+
+    def get_net_frame_extents(self, window: Window) -> FrameExtents | None:
+        """Returns WM-decorated frame extents (titlebar + borders) if present."""
+        extents = get_property_value(window, self.atom.frame_extents)
         if extents and len(extents) >= 4:
             return FrameExtents(extents[0], extents[1], extents[2], extents[3])
         return None

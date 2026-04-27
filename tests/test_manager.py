@@ -294,7 +294,7 @@ def test_compute_client_geometry_no_frame_extents(wm: WindowManager) -> None:
     win = MagicMock()
     with (
         patch.object(wm, "get_gtk_frame_extents", return_value=None),
-        patch("windowcharmer.tiling.manager.get_property_value", return_value=None),
+        patch.object(wm, "get_net_frame_extents", return_value=None),
     ):
         x, y, w, h = wm._compute_client_geometry(win, 100, 50, 800, 600)
     assert (x, y, w, h) == (100, 50, 800, 600)
@@ -306,7 +306,7 @@ def test_compute_client_geometry_gtk_csd_only(wm: WindowManager) -> None:
     fe = FrameExtents(left=16, right=16, top=10, bottom=20)
     with (
         patch.object(wm, "get_gtk_frame_extents", return_value=fe),
-        patch("windowcharmer.tiling.manager.get_property_value", return_value=None),
+        patch.object(wm, "get_net_frame_extents", return_value=None),
     ):
         x, y, w, h = wm._compute_client_geometry(win, 100, 50, 800, 600)
     assert x == 100 - 16
@@ -318,9 +318,10 @@ def test_compute_client_geometry_gtk_csd_only(wm: WindowManager) -> None:
 def test_compute_client_geometry_net_frame_only(wm: WindowManager) -> None:
     """WM-decorated: titlebar+borders are outside the X11 client. Size shrinks; origin unchanged."""
     win = MagicMock()
+    net = FrameExtents(left=2, right=2, top=28, bottom=2)
     with (
         patch.object(wm, "get_gtk_frame_extents", return_value=None),
-        patch("windowcharmer.tiling.manager.get_property_value", return_value=[2, 2, 28, 2]),
+        patch.object(wm, "get_net_frame_extents", return_value=net),
     ):
         x, y, w, h = wm._compute_client_geometry(win, 100, 50, 800, 600)
     assert x == 100
@@ -335,10 +336,10 @@ def test_compute_client_geometry_combined_extents(wm: WindowManager) -> None:
     """
     win = MagicMock()
     gtk = FrameExtents(left=16, right=16, top=10, bottom=20)
-    net = [2, 2, 4, 2]  # left, right, top, bottom
+    net = FrameExtents(left=2, right=2, top=4, bottom=2)
     with (
         patch.object(wm, "get_gtk_frame_extents", return_value=gtk),
-        patch("windowcharmer.tiling.manager.get_property_value", return_value=net),
+        patch.object(wm, "get_net_frame_extents", return_value=net),
     ):
         x, y, w, h = wm._compute_client_geometry(win, 100, 50, 800, 600)
     assert x == 100 - 16
@@ -350,9 +351,10 @@ def test_compute_client_geometry_combined_extents(wm: WindowManager) -> None:
 def test_compute_client_geometry_clamps_to_one(wm: WindowManager) -> None:
     """If frame extents would shrink the result to 0 or negative, clamp to 1px."""
     win = MagicMock()
+    net = FrameExtents(left=500, right=500, top=500, bottom=500)
     with (
         patch.object(wm, "get_gtk_frame_extents", return_value=None),
-        patch("windowcharmer.tiling.manager.get_property_value", return_value=[500, 500, 500, 500]),
+        patch.object(wm, "get_net_frame_extents", return_value=net),
     ):
         _, _, w, h = wm._compute_client_geometry(win, 0, 0, 100, 100)
     assert w == 1
@@ -423,10 +425,9 @@ def test_apply_tile_action_warns_and_skips_when_center_required_but_zero(
         wm._apply_tile_action(TileAction.CENTER, win)
 
     move_and_resize.assert_not_called()
-    assert any(
-        "center column" in record.message and "CENTER" in record.message.upper()
-        for record in caplog.records
-    ), f"expected warning about center-required action; got {[r.message for r in caplog.records]}"
+    assert any("center column" in record.message and "CENTER" in record.message.upper() for record in caplog.records), (
+        f"expected warning about center-required action; got {[r.message for r in caplog.records]}"
+    )
 
 
 # ---------------------------------------------------------------------------
