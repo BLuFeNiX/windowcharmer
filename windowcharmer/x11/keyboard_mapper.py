@@ -51,6 +51,12 @@ class KeyboardMapper:
         cementing the inverted one.
         """
         if not self.super_l_keycode or not self.hyper_l_keycode:
+            logger.warning(
+                "Super_L (kc=%d) or Hyper_L (kc=%d) not found in current keymap — "
+                "keymap swap and bare-Super passthrough will be disabled.",
+                self.super_l_keycode,
+                self.hyper_l_keycode,
+            )
             return
         try:
             self._canon_super_kc = min(self.super_l_keycode, self.hyper_l_keycode)
