@@ -110,9 +110,16 @@ class KeyboardMapper:
                 break
         logger.debug("Refreshed keycodes: Super_L=%d, Hyper_L=%d", self.super_l_keycode, self.hyper_l_keycode)
 
-    def refresh_keycodes(self) -> None:
+    def refresh_keycodes(self) -> int:
+        """Refresh from the live keymap and return super_l_keycode atomically.
+
+        Returning the value under the same lock that wrote it keeps callers
+        from racing a concurrent apply_super_hyper_swap that would mutate
+        super_l_keycode between refresh and read.
+        """
         with self._lock:
             self._refresh_keycodes_locked()
+            return self.super_l_keycode
 
     def apply_super_hyper_swap(self) -> None:
         """Swap Super_L and Hyper_L keysyms. Idempotent across self-triggered

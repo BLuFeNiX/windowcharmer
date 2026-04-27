@@ -81,8 +81,8 @@ class WindowCharmerApp:
     def _monitor_callback(self, event: rq.Event) -> None:
         """Handle low-level XRecord events for keycode cache and Super passthrough."""
         if event.type == X.MappingNotify:
-            self.mapper.refresh_keycodes()
-            self.passthrough_tracker.update_keycode(self.mapper.super_l_keycode)
+            super_kc = self.mapper.refresh_keycodes()
+            self.passthrough_tracker.update_keycode(super_kc)
             return
 
         if event.type in (X.KeyPress, X.KeyRelease):
