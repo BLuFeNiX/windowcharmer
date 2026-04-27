@@ -282,3 +282,115 @@ def test_resize_all_windows_includes_sticky_window() -> None:
         wm.resize_all_windows(1)
 
     apply_action.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _compute_client_geometry — frame extents
+# ---------------------------------------------------------------------------
+
+
+def test_compute_client_geometry_no_frame_extents(wm: WindowManager) -> None:
+    """Bare X11 window with no decorations: target rect passes through unchanged."""
+    win = MagicMock()
+    with (
+        patch.object(wm, "get_gtk_frame_extents", return_value=None),
+        patch("windowcharmer.tiling.manager.get_property_value", return_value=None),
+    ):
+        x, y, w, h = wm._compute_client_geometry(win, 100, 50, 800, 600)
+    assert (x, y, w, h) == (100, 50, 800, 600)
+
+
+def test_compute_client_geometry_gtk_csd_only(wm: WindowManager) -> None:
+    """GTK CSD: shadows live inside the X11 window. Origin shifts out, size grows."""
+    win = MagicMock()
+    fe = FrameExtents(left=16, right=16, top=10, bottom=20)
+    with (
+        patch.object(wm, "get_gtk_frame_extents", return_value=fe),
+        patch("windowcharmer.tiling.manager.get_property_value", return_value=None),
+    ):
+        x, y, w, h = wm._compute_client_geometry(win, 100, 50, 800, 600)
+    assert x == 100 - 16
+    assert y == 50 - 10
+    assert w == 800 + 16 + 16
+    assert h == 600 + 10 + 20
+
+
+def test_compute_client_geometry_net_frame_only(wm: WindowManager) -> None:
+    """WM-decorated: titlebar+borders are outside the X11 client. Size shrinks; origin unchanged."""
+    win = MagicMock()
+    with (
+        patch.object(wm, "get_gtk_frame_extents", return_value=None),
+        patch("windowcharmer.tiling.manager.get_property_value", return_value=[2, 2, 28, 2]),
+    ):
+        x, y, w, h = wm._compute_client_geometry(win, 100, 50, 800, 600)
+    assert x == 100
+    assert y == 50
+    assert w == 800 - 4
+    assert h == 600 - 30
+
+
+def test_compute_client_geometry_combined_extents(wm: WindowManager) -> None:
+    """Pathological case: both _GTK_FRAME_EXTENTS and _NET_FRAME_EXTENTS set.
+    Verify the math is order-stable (GTK shift+grow first, then NET shrink).
+    """
+    win = MagicMock()
+    gtk = FrameExtents(left=16, right=16, top=10, bottom=20)
+    net = [2, 2, 4, 2]  # left, right, top, bottom
+    with (
+        patch.object(wm, "get_gtk_frame_extents", return_value=gtk),
+        patch("windowcharmer.tiling.manager.get_property_value", return_value=net),
+    ):
+        x, y, w, h = wm._compute_client_geometry(win, 100, 50, 800, 600)
+    assert x == 100 - 16
+    assert y == 50 - 10
+    assert w == (800 + 16 + 16) - (2 + 2)
+    assert h == (600 + 10 + 20) - (4 + 2)
+
+
+def test_compute_client_geometry_clamps_to_one(wm: WindowManager) -> None:
+    """If frame extents would shrink the result to 0 or negative, clamp to 1px."""
+    win = MagicMock()
+    with (
+        patch.object(wm, "get_gtk_frame_extents", return_value=None),
+        patch("windowcharmer.tiling.manager.get_property_value", return_value=[500, 500, 500, 500]),
+    ):
+        _, _, w, h = wm._compute_client_geometry(win, 0, 0, 100, 100)
+    assert w == 1
+    assert h == 1
+
+
+# ---------------------------------------------------------------------------
+# move_and_resize — clears max flags before configure
+# ---------------------------------------------------------------------------
+
+
+def test_move_and_resize_clears_max_flags_when_maximized(wm: WindowManager) -> None:
+    """A maximized window ignores configure(); the WM flags must be cleared first."""
+    win = MagicMock()
+    with (
+        patch.object(wm, "_compute_client_geometry", return_value=(0, 0, 800, 600)),
+        patch.object(wm, "is_window_maximized_vertically", return_value=True),
+        patch.object(wm, "is_window_maximized_horizontally", return_value=False),
+        patch.object(wm, "set_max_flags") as set_flags,
+    ):
+        wm.move_and_resize(win, 0, 0, 800, 600)
+    set_flags.assert_called_once_with(win, 0, 0)
+    win.configure.assert_called_once()
+
+
+def test_move_and_resize_skips_clear_when_not_maximized(wm: WindowManager) -> None:
+    win = MagicMock()
+    with (
+        patch.object(wm, "_compute_client_geometry", return_value=(10, 20, 100, 200)),
+        patch.object(wm, "is_window_maximized_vertically", return_value=False),
+        patch.object(wm, "is_window_maximized_horizontally", return_value=False),
+        patch.object(wm, "set_max_flags") as set_flags,
+    ):
+        wm.move_and_resize(win, 10, 20, 100, 200)
+    set_flags.assert_not_called()
+    win.configure.assert_called_once()
+    kwargs = win.configure.call_args.kwargs
+    assert kwargs["x"] == 10
+    assert kwargs["y"] == 20
+    assert kwargs["width"] == 100
+    assert kwargs["height"] == 200
