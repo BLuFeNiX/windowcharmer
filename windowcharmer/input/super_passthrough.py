@@ -34,13 +34,6 @@ class SuperPassthroughTracker:
 
     def handle_event(self, event: rq.Event) -> None:
         """Process a KeyPress or KeyRelease event."""
-        # Auto-reset stuck state: if Super has been "held" for too long, the release
-        # was likely consumed by a focus change and we should clear the flag.
-        if self.super_pressed and (time.monotonic() - self._super_press_time) > self._SUPER_TIMEOUT:
-            logger.debug("Super press timed out — clearing stuck state")
-            self.super_pressed = False
-            self.key_pressed_while_super_down = False
-
         if event.type == X.KeyPress:
             if event.detail == self.super_keycode:
                 self.super_pressed = True
@@ -51,9 +44,12 @@ class SuperPassthroughTracker:
                 self.key_pressed_while_super_down = True
 
         elif event.type == X.KeyRelease and event.detail == self.super_keycode:
-            self.super_pressed = False
             elapsed = time.monotonic() - self._super_press_time
+            self.super_pressed = False
             logger.debug("Super_L released")
+            # Suppress when another key was held with Super, or when the press is
+            # so old that the release was likely consumed by a focus change and
+            # this event is a stray.
             if not self.key_pressed_while_super_down and elapsed < self._SUPER_TIMEOUT:
                 logger.debug("Forwarding bare Super tap as Hyper_L")
                 self.on_passthrough()
