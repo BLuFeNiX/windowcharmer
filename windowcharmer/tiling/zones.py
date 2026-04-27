@@ -20,7 +20,9 @@ def get_window_position(window: Window) -> tuple[int, int] | None:
     try:
         root = window.get_geometry().root
         coords = window.translate_coords(root, 0, 0)
-        return (abs(coords.x), abs(coords.y)) if coords else (0, 0)
+        if not coords:
+            return None
+        return abs(coords.x), abs(coords.y)
     except (BadWindow, BadDrawable):
         return None
 
