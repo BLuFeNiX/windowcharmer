@@ -110,7 +110,8 @@ def _make_gi_caller() -> Callable[[str], tuple[bool, str]] | None:
             return bool(ok), str(val)
 
         return call
-    except Exception:
+    except Exception as e:
+        logger.debug("gi/D-Bus setup failed, falling back to subprocess: %s", e)
         return None
 
 
