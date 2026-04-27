@@ -95,15 +95,15 @@ class KeyGrabber:
 
             except BadAccess as e:
                 self.ungrab_keys()
-                if attempt == 1:
+                if attempt < 2:
                     logger.warning(
                         f"KeyGrabber: BadAccess — another client may own a grab. "
                         f"Retrying in {_BAD_ACCESS_RETRY_DELAY:.0f}s... ({e})"
                     )
                     time.sleep(_BAD_ACCESS_RETRY_DELAY)
-                else:
-                    logger.error("KeyGrabber: BadAccess persists after retry — exiting.")
-                    sys.exit(1)
+                    continue
+                logger.error("KeyGrabber: BadAccess persists after retry — exiting.")
+                sys.exit(1)
             except Exception as e:
                 logger.error(f"KeyGrabber error: {e}")
                 logger.debug("", exc_info=True)
