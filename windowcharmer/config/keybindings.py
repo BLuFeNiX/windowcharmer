@@ -55,18 +55,23 @@ def load_keybindings() -> dict[str, TileAction]:
     try:
         with open(config_file, "rb") as f:
             config_data = tomllib.load(f)
-
-        for section in config_data:
-            if section != "keybindings":
-                logger.warning(f"Unknown section [{section}] in config.toml — ignoring.")
-
-        for key, action_str in config_data.get("keybindings", {}).items():
-            try:
-                bindings[key] = TileAction(action_str)
-            except ValueError:
-                logger.warning(f"Invalid action '{action_str}' for key '{key}' in config.toml — ignoring.")
-
     except (OSError, tomllib.TOMLDecodeError) as e:
         logger.error(f"Failed to load config file {config_file}: {e}")
+        return bindings
+
+    for section in config_data:
+        if section != "keybindings":
+            logger.warning(f"Unknown section [{section}] in config.toml — ignoring.")
+
+    section = config_data.get("keybindings", {})
+    if not isinstance(section, dict):
+        logger.warning("[keybindings] in config.toml must be a table — ignoring.")
+        return bindings
+
+    for key, action_str in section.items():
+        try:
+            bindings[key] = TileAction(action_str)
+        except ValueError:
+            logger.warning(f"Invalid action '{action_str}' for key '{key}' in config.toml — ignoring.")
 
     return bindings

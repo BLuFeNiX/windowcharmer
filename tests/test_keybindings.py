@@ -45,3 +45,15 @@ def test_malformed_toml_falls_back_to_defaults(tmp_path: Path) -> None:
         bindings = load_keybindings()
 
     assert bindings == get_default_keybindings()
+
+
+def test_non_dict_keybindings_section_falls_back_to_defaults(tmp_path: Path) -> None:
+    """A top-level `keybindings = "foo"` (not a table) must not crash the daemon."""
+    config_dir = tmp_path / ".config" / "windowcharmer"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.toml").write_text('keybindings = "foo"\n')
+
+    with patch.dict("os.environ", {"XDG_CONFIG_HOME": str(tmp_path / ".config")}):
+        bindings = load_keybindings()
+
+    assert bindings == get_default_keybindings()
