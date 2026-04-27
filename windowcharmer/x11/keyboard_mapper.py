@@ -46,11 +46,26 @@ class KeyboardMapper:
             logger.debug("", exc_info=True)
 
     def refresh_keycodes(self) -> None:
-        """Re-fetch keycodes from the X server after a MappingNotify."""
+        """Re-fetch keycodes by scanning the live server mapping.
+
+        keysym_to_keycode() uses Xlib's internal cache, which is only updated
+        via refresh_keyboard_mapping() on that specific Display. Since the mapper
+        Display never sees MappingNotify events, querying get_keyboard_mapping()
+        directly is the only way to get the current server state.
+        """
         with self._lock:
-            self.super_l_keycode = self._dpy.keysym_to_keycode(self.super_l_keysym)
-            self.hyper_l_keycode = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
-            logger.debug(f"Refreshed keycodes: Super_L={self.super_l_keycode}, Hyper_L={self.hyper_l_keycode}")
+            info = self._dpy.display.info
+            kc_min, count = info.min_keycode, info.max_keycode - info.min_keycode + 1
+            mapping = self._dpy.get_keyboard_mapping(kc_min, count)
+            for offset, keysyms in enumerate(mapping):
+                if not keysyms:
+                    continue
+                kc = kc_min + offset
+                if keysyms[0] == self.super_l_keysym:
+                    self.super_l_keycode = kc
+                elif keysyms[0] == self.hyper_l_keysym:
+                    self.hyper_l_keycode = kc
+            logger.debug("Refreshed keycodes: Super_L=%d, Hyper_L=%d", self.super_l_keycode, self.hyper_l_keycode)
 
     def apply_super_hyper_swap(self) -> None:
         """Swap Super_L and Hyper_L keysyms. Idempotent — checks current state first."""
