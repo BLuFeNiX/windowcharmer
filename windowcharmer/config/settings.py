@@ -17,10 +17,9 @@ class Config:
 
     _DEFAULT_RATIO_IDX: ClassVar[int] = 4  # index of 50% in supported_ratios
 
-    def __init__(self, screen_width: int) -> None:
-        self.screen_width: int = screen_width
+    def __init__(self, wa_w: int) -> None:
         # Defaults to full screen until the manager learns the real workarea.
-        self.wa_w: int = screen_width
+        self.wa_w: int = wa_w
 
         # State mapping desktop index -> ratio index
         self._desktop_ratios: dict[int, int] = {}
@@ -32,11 +31,10 @@ class Config:
         self.ratio_idx: int = self._DEFAULT_RATIO_IDX
         self.reload()
 
-    def set_state(self, width: int, wa_w: int, desktop: int) -> None:
-        """Update screen width, workarea width, and active desktop in one reload."""
-        if self.screen_width == width and self.wa_w == wa_w and self.active_desktop == desktop:
+    def set_state(self, wa_w: int, desktop: int) -> None:
+        """Update workarea width and active desktop in one reload."""
+        if self.wa_w == wa_w and self.active_desktop == desktop:
             return
-        self.screen_width = width
         self.wa_w = wa_w
         self.active_desktop = desktop
         self.reload()

@@ -98,7 +98,8 @@ class WindowManager:
         screen = self.d.screen()
         self.root: Window = screen.root
 
-        # Config owns screen_width (refreshed in _update_state to handle RandR changes).
+        # Initial wa_w is the screen width; _update_state replaces it with the
+        # real workarea width on the first action.
         self.config: Config = Config(screen.width_in_pixels)
         self.dim: ScreenDimensions | None = None
         self.animator: CinnamonAnimator = CinnamonAnimator(disabled=no_animate)
@@ -117,7 +118,7 @@ class WindowManager:
 
         # Workarea must reach Config before reload so center_width is sized
         # against usable area, not raw screen width.
-        self.config.set_state(screen.width_in_pixels, wa_w, active_desktop)
+        self.config.set_state(wa_w, active_desktop)
 
         self.dim = ScreenDimensions(
             wa_x,
