@@ -88,34 +88,48 @@ class KeyGrabber:
             with contextlib.suppress(BlockingIOError, OSError):
                 os.write(self._wake_w, b"x")
 
-    def start(self) -> None:
-        """Main event loop. Retries once on BadAccess; raises KeyGrabberError on failure.
+    def _grab_with_retry(self) -> None:
+        """Grab all configured keys, retrying once on BadAccess.
 
-        Returns normally when stop() is called.
+        Used both at startup and from the MappingNotify handler when the
+        keymap changes and we have to re-grab. Lifting the retry into a
+        helper means a transient grab conflict during a rebind doesn't
+        kill the daemon any more than one at startup would.
+        """
+        for attempt in (1, 2):
+            try:
+                self.grab_keys()
+                return
+            except BadAccess as e:
+                self.ungrab_keys()
+                if attempt >= 2:
+                    raise
+                logger.warning(
+                    "KeyGrabber: BadAccess — another client may own a grab. "
+                    "Retrying in %.0fs... (%s)",
+                    _BAD_ACCESS_RETRY_DELAY,
+                    e,
+                )
+                time.sleep(_BAD_ACCESS_RETRY_DELAY)
+
+    def start(self) -> None:
+        """Main event loop. Returns normally when stop() is called.
+
+        Raises KeyGrabberError if BadAccess persists after retry, or any
+        other unexpected exception escapes the event loop.
         """
         self._wake_r, self._wake_w = os.pipe()
         try:
             os.set_blocking(self._wake_w, False)
-            for attempt in (1, 2):
-                self.grab_keys()
-                try:
-                    self._run_loop()
-                    return
-                except BadAccess as e:
-                    self.ungrab_keys()
-                    if attempt < 2:
-                        logger.warning(
-                            "KeyGrabber: BadAccess — another client may own a grab. "
-                            "Retrying in %.0fs... (%s)",
-                            _BAD_ACCESS_RETRY_DELAY,
-                            e,
-                        )
-                        time.sleep(_BAD_ACCESS_RETRY_DELAY)
-                        continue
-                    raise KeyGrabberError("BadAccess persists after retry") from e
-                except Exception as e:
-                    self.ungrab_keys()
-                    raise KeyGrabberError(f"event loop crashed: {e}") from e
+            try:
+                self._grab_with_retry()
+                self._run_loop()
+            except BadAccess as e:
+                self.ungrab_keys()
+                raise KeyGrabberError("BadAccess persists after retry") from e
+            except Exception as e:
+                self.ungrab_keys()
+                raise KeyGrabberError(f"event loop crashed: {e}") from e
         finally:
             os.close(self._wake_r)
             os.close(self._wake_w)
@@ -156,4 +170,6 @@ class KeyGrabber:
                 self.ungrab_keys()
                 # grab_keys() re-reads current keycodes from the X server, so
                 # key_combinations (keysym→callback) doesn't need to be rebuilt.
-                self.grab_keys()
+                # Retry once on BadAccess so a transient conflict during a
+                # rebind doesn't crash the loop.
+                self._grab_with_retry()

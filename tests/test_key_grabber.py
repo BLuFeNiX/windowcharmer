@@ -117,11 +117,9 @@ def test_stop_during_select_wakes_loop_promptly() -> None:
 
 
 def test_bad_access_retried_once_then_succeeds() -> None:
-    """One BadAccess followed by a clean stop completes without raising."""
+    """grab_keys raising BadAccess on the first attempt must retry and complete."""
     grabber, _ = _make_grabber()
 
-    # First attempt raises BadAccess (via patching _run_loop directly to avoid
-    # over-mocking next_event for the retry path).
     call_count = 0
 
     def _maybe_raise() -> None:
@@ -129,9 +127,11 @@ def test_bad_access_retried_once_then_succeeds() -> None:
         call_count += 1
         if call_count == 1:
             raise _make_bad_access()
+        # Second attempt: succeed and set stopped so _run_loop exits immediately.
         grabber._stopped = True
 
-    grabber._run_loop = _maybe_raise  # type: ignore[method-assign]
+    # _grab_with_retry calls grab_keys; patching there exercises the retry path.
+    grabber.grab_keys = _maybe_raise  # type: ignore[method-assign]
     grabber.start()  # must not raise
 
     assert call_count == 2
