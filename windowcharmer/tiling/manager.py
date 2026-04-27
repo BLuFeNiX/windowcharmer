@@ -80,20 +80,17 @@ class WindowManager:
 
         screen = self.d.screen()
         self.root: Window = screen.root
-        self.screen_width: int = screen.width_in_pixels
-        # screen_width is refreshed in _update_state to handle RandR changes.
 
-        self.config: Config = Config(self.screen_width)
+        # Config owns screen_width (refreshed in _update_state to handle RandR changes).
+        self.config: Config = Config(screen.width_in_pixels)
         self.dim: ScreenDimensions | None = None
         self.animator: CinnamonAnimator = CinnamonAnimator(disabled=no_animate)
 
     def _update_state(self) -> None:
         """Refresh screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
         screen = self.d.screen()
-        self.screen_width = screen.width_in_pixels
-
         active_desktop = self.get_active_desktop()
-        self.config.set_state(self.screen_width, active_desktop)
+        self.config.set_state(screen.width_in_pixels, active_desktop)
 
         workarea = get_property_value(self.root, self.atom.workarea)
         if workarea:
@@ -102,7 +99,7 @@ class WindowManager:
             wa_y, wa_h = 0, screen.height_in_pixels
 
         self.dim = ScreenDimensions(
-            self.screen_width,
+            self.config.screen_width,
             wa_y,
             wa_h,
             self.config.center_width,
@@ -184,8 +181,8 @@ class WindowManager:
         # Compute what the layout will look like after the ratio step, without
         # committing the change yet so the fallback path can do it if needed.
         next_idx = (self.config.ratio_idx + step) % len(Config.supported_ratios)
-        next_center_width = round(self.screen_width * Config.supported_ratios[next_idx])
-        next_dim = ScreenDimensions(self.screen_width, self.dim.wa_y, self.dim.wa_h, next_center_width)
+        next_center_width = round(self.config.screen_width * Config.supported_ratios[next_idx])
+        next_dim = ScreenDimensions(self.config.screen_width, self.dim.wa_y, self.dim.wa_h, next_center_width)
 
         targets = []
         for win, zone in window_zones:
