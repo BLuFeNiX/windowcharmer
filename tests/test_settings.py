@@ -31,15 +31,15 @@ def test_next_ratio_multi_step_backward() -> None:
 
 def test_per_desktop_ratios() -> None:
     cfg = Config(2560)
-    cfg.set_active_desktop(0)
+    cfg.set_state(2560, 0)
     cfg.next_ratio(1)
     idx_desktop0 = cfg.ratio_idx
 
-    cfg.set_active_desktop(1)
+    cfg.set_state(2560, 1)
     # Desktop 1 should still be at default index (2)
     assert cfg.ratio_idx == 2
 
-    cfg.set_active_desktop(0)
+    cfg.set_state(2560, 0)
     # Back to desktop 0, ratio should be remembered
     assert cfg.ratio_idx == idx_desktop0
 

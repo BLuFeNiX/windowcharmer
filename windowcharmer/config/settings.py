@@ -30,16 +30,6 @@ class Config:
         self.ratio_idx: int = self._DEFAULT_RATIO_IDX
         self.reload()
 
-    def update_screen_width(self, width: int) -> None:
-        if self.screen_width != width:
-            self.screen_width = width
-            self.reload()
-
-    def set_active_desktop(self, desktop: int) -> None:
-        if self.active_desktop != desktop:
-            self.active_desktop = desktop
-            self.reload()
-
     def set_state(self, width: int, desktop: int) -> None:
         """Update screen width and active desktop in a single reload pass."""
         if self.screen_width == width and self.active_desktop == desktop:
