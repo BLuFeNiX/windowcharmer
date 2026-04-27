@@ -169,7 +169,7 @@ class WindowManager:
                 if self.get_window_desktop(win) != self.config.active_desktop:
                     continue
                 zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
-                if zone != "unknown":
+                if "unknown" not in zone:
                     window_zones.append((win, zone))
             except Exception as e:
                 logger.debug("Skipping window during animated resize_all: %s", e)
@@ -337,7 +337,8 @@ class WindowManager:
                 if self.get_window_desktop(win) != self.config.active_desktop:
                     continue
                 zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
-                window_zones.append((win, zone))
+                if "unknown" not in zone:
+                    window_zones.append((win, zone))
             except Exception as e:
                 logger.debug(f"Skipping window during resize_all: {e}")
 
@@ -347,7 +348,4 @@ class WindowManager:
         for win, zone in window_zones:
             if self.config.ratio_idx == 0:
                 zone = _remap_zone_no_center(zone)
-            try:
-                self._apply_tile_action(TileAction(zone), win)
-            except ValueError:
-                logger.warning(f"Unknown zone: {zone}")
+            self._apply_tile_action(TileAction(zone), win)

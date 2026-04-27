@@ -33,8 +33,10 @@ def determine_tile_zone(
 ) -> str:
     """Heuristically determine which tiling zone a window currently occupies.
 
-    Returns a zone string like ``"left"``, ``"top-right"``, or ``"unknown"``.
-    Returns ``"unknown"`` if the window has been destroyed.
+    Returns a zone string like ``"left"`` or ``"top-right"``.
+    Returns a string containing ``"unknown"`` (e.g. ``"unknown"``,
+    ``"top-unknown"``) when the window is destroyed or does not match
+    any tiling zone.
     See docs/x11_coordinates.md for coordinate system notes.
     """
     if not dim:
