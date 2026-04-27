@@ -56,14 +56,14 @@ def _remap_zone_no_center(zone: str) -> str:
 
 def _resolve_zone_actions(
     window_zones: Iterable[tuple[Window, str]],
-    ratio_idx: int,
+    has_center: bool,
 ) -> Iterator[tuple[Window, TileAction]]:
-    """Yield (win, TileAction) pairs, applying the no-center remap when ratio_idx == 0.
+    """Yield (win, TileAction) pairs, applying the no-center remap when has_center is False.
 
     Skips zones that don't correspond to a TileAction (e.g. 'top-left-center').
     """
     for win, zone in window_zones:
-        if ratio_idx == 0:
+        if not has_center:
             zone = _remap_zone_no_center(zone)
         try:
             yield win, TileAction(zone)
@@ -208,7 +208,7 @@ class WindowManager:
         next_dim = ScreenDimensions(self.dim.wa_x, self.dim.wa_y, self.dim.wa_w, self.dim.wa_h, next_center_width)
 
         targets = []
-        for win, action in _resolve_zone_actions(window_zones, next_idx):
+        for win, action in _resolve_zone_actions(window_zones, has_center=next_center_width > 0):
             spec = _TILE_SPEC.get(action)
             if not spec or (spec.needs_center and next_center_width == 0):
                 continue
@@ -352,7 +352,7 @@ class WindowManager:
         self.config.next_ratio(step)
         self._update_state()
 
-        for win, action in _resolve_zone_actions(window_zones, self.config.ratio_idx):
+        for win, action in _resolve_zone_actions(window_zones, has_center=self.config.center_width > 0):
             self._apply_tile_action(action, win)
 
     def _collect_zoned_windows(self) -> list[tuple[Window, str]]:
