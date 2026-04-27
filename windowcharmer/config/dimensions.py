@@ -17,7 +17,6 @@ class ScreenDimensions:
     center_width: int
 
     # Calculated fields
-    side_width: int = field(init=False)
     h_half: int = field(init=False)
     h_full: int = field(init=False)
     x_left: int = field(init=False)
@@ -30,7 +29,6 @@ class ScreenDimensions:
 
     def __post_init__(self) -> None:
         side_width = (self.wa_w - self.center_width) // 2
-        self.side_width = side_width
 
         h_half = self.wa_h // 2
         self.h_half = h_half
