@@ -88,11 +88,11 @@ The center column width cycles through these ratios (relative to screen width):
 |---|---|
 | 0 | 0 % (two-column mode — center actions map to left) |
 | 1 | ~33 % |
-| 2 | 40 % (default) |
+| 2 | 40 % |
 | 3 | 45 % |
-| 4 | 50 % |
+| 4 | 50 % (default) |
 | 5 | 55 % |
 | 6 | 60 % |
 | 7 | 65 % |
 
-`bigger` / `smaller` step through this list. The ratio is **per virtual desktop** and resets to the default (40 %) on daemon restart.
+`bigger` / `smaller` step through this list. The ratio is **per virtual desktop** and resets to the default (50 %) on daemon restart.
