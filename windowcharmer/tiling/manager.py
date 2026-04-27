@@ -163,17 +163,7 @@ class WindowManager:
         if not self.dim:
             return False
 
-        window_zones = []
-        for win in self.list_windows():
-            try:
-                if self.get_window_desktop(win) != self.config.active_desktop:
-                    continue
-                zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
-                if "unknown" not in zone:
-                    window_zones.append((win, zone))
-            except Exception as e:
-                logger.debug("Skipping window during animated resize_all: %s", e)
-
+        window_zones = self._collect_zoned_windows()
         if not window_zones:
             return False
 
@@ -331,16 +321,7 @@ class WindowManager:
 
     def resize_all_windows(self, step: int) -> None:
         """Adjusts the center-column ratio for all tiled windows on the active desktop."""
-        window_zones = []
-        for win in self.list_windows():
-            try:
-                if self.get_window_desktop(win) != self.config.active_desktop:
-                    continue
-                zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
-                if "unknown" not in zone:
-                    window_zones.append((win, zone))
-            except Exception as e:
-                logger.debug(f"Skipping window during resize_all: {e}")
+        window_zones = self._collect_zoned_windows()
 
         self.config.next_ratio(step)
         self._update_state()
@@ -353,3 +334,22 @@ class WindowManager:
             except ValueError:
                 continue
             self._apply_tile_action(action, win)
+
+    def _collect_zoned_windows(self) -> list[tuple[Window, str]]:
+        """Return (window, zone) pairs for all tiled windows on the active desktop.
+
+        Windows on other desktops, in unknown zones, or that raise during
+        inspection are skipped. Zones may be strings that don't map to a
+        TileAction (e.g. 'top-left-center'); callers must guard against that.
+        """
+        result: list[tuple[Window, str]] = []
+        for win in self.list_windows():
+            try:
+                if self.get_window_desktop(win) != self.config.active_desktop:
+                    continue
+                zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
+                if "unknown" not in zone:
+                    result.append((win, zone))
+            except Exception as e:
+                logger.debug("Skipping window during tiled-zone scan: %s", e)
+        return result
