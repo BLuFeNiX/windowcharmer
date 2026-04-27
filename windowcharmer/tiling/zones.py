@@ -8,21 +8,6 @@ from ..config.dimensions import ScreenDimensions
 _ZONE_DEVIATION = 128
 
 
-def get_window_position(window: Window) -> tuple[int, int] | None:
-    """Return the (x, y) position of a window relative to the root, or None if gone.
-
-    See docs/x11_coordinates.md for why abs() is applied to the translated coords.
-    """
-    try:
-        root = window.get_geometry().root
-        coords = window.translate_coords(root, 0, 0)
-        if not coords:
-            return None
-        return abs(coords.x), abs(coords.y)
-    except (BadWindow, BadDrawable):
-        return None
-
-
 def determine_tile_zone(
     window: Window,
     dim: ScreenDimensions | None,
@@ -35,20 +20,25 @@ def determine_tile_zone(
     Returns a string containing ``"unknown"`` (e.g. ``"unknown"``,
     ``"top-unknown"``) when the window is destroyed or does not match
     any tiling zone.
-    See docs/x11_coordinates.md for coordinate system notes.
+    See docs/x11_coordinates.md for coordinate system notes — including
+    why abs() is the correct way to recover screen coordinates from
+    translate_coords' inverted result.
     """
     if not dim:
         return "unknown"
 
+    # One get_geometry round-trip serves both the root reference for
+    # translate_coords and the width/height we need below.
     try:
-        pos = get_window_position(window)
-        if pos is None:
-            return "unknown"
-        x, y = pos
         geom = window.get_geometry()
-        w, h = geom.width, geom.height
+        coords = window.translate_coords(geom.root, 0, 0)
     except (BadWindow, BadDrawable):
         return "unknown"
+    if not coords:
+        return "unknown"
+
+    x, y = abs(coords.x), abs(coords.y)
+    w, h = geom.width, geom.height
 
     def within(val: int, target: int, dev: int = deviation) -> bool:
         return target - dev <= val <= target + dev

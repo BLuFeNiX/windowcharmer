@@ -71,9 +71,12 @@ def test_zone_deviation_tolerance() -> None:
 
 
 def test_destroyed_window_returns_unknown() -> None:
-    from unittest.mock import patch
+    """get_geometry raising BadWindow (window destroyed mid-call) → 'unknown'."""
+    from Xlib.error import BadWindow
+
+    err = BadWindow.__new__(BadWindow)
+    err._data = {"resource_id": 0, "sequence_number": 0, "major_opcode": 0, "minor_opcode": 0}
 
     win = MagicMock()
-    # Simulate get_window_position returning None (window destroyed mid-call)
-    with patch("windowcharmer.tiling.zones.get_window_position", return_value=None):
-        assert determine_tile_zone(win, _dim(), False) == "unknown"
+    win.get_geometry.side_effect = err
+    assert determine_tile_zone(win, _dim(), False) == "unknown"

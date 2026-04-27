@@ -33,19 +33,14 @@ screen_y = -coords.y   # equivalently: abs(coords.y) when Y >= 0
 
 ---
 
-## Why `abs()` in `get_window_position`
+## Why `abs()` in `determine_tile_zone`
 
 ```python
-# zones.py
-def get_window_position(window: Window) -> tuple[int, int] | None:
-    try:
-        root = window.get_geometry().root
-        coords = window.translate_coords(root, 0, 0)
-        if not coords:
-            return None
-        return abs(coords.x), abs(coords.y)
-    except (BadWindow, BadDrawable):
-        return None
+# zones.py — inside determine_tile_zone
+geom = window.get_geometry()
+coords = window.translate_coords(geom.root, 0, 0)
+...
+x, y = abs(coords.x), abs(coords.y)
 ```
 
 The `abs()` calls are **correct and necessary**. For any window at a
@@ -125,8 +120,9 @@ All three windows are fully tiled. The numbers verify that:
 
 ## Zone Detection
 
-`determine_tile_zone` in `zones.py` uses `get_window_position` to get
-`(x, y)` and then compares those values against `ScreenDimensions`
+`determine_tile_zone` in `zones.py` calls `get_geometry` once to fetch
+both the root reference (for `translate_coords`) and the window's
+width/height, then compares position and size against `ScreenDimensions`
 thresholds with a ±128 pixel deviation.
 
 The deviation exists to tolerate:
