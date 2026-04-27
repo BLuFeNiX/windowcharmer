@@ -49,7 +49,7 @@ class KeyMonitor:
                 return
 
             data = reply.data
-            while len(data):
+            while data:
                 event, data = rq.EventField("event").parse_binary_value(data, self.dpy.display, None, None)
                 if event.type == X.MappingNotify:
                     # Update Xlib's internal mapping so keysym_to_keycode works correctly
@@ -61,6 +61,9 @@ class KeyMonitor:
             self.dpy.record_enable_context(self.ctx, inner_callback)
         finally:
             self.dpy.record_free_context(self.ctx)
+            # Null the handle so a second stop() call won't try to disable a
+            # freed context.
+            self.ctx = None
 
     def stop(self) -> None:
         if self.ctx is None:
