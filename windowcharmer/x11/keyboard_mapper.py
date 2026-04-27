@@ -29,18 +29,34 @@ class KeyboardMapper:
         self._backup_mappings()
 
     def _backup_mappings(self) -> None:
-        """Snapshot the current keysym assignments so cleanup() can restore them."""
+        """Snapshot the current keysym assignments so cleanup() can restore them.
+
+        After a previous run crashed mid-swap, keysym_to_keycode(Super_L) returns
+        the keycode currently holding Super_L — i.e. the canonical Hyper position.
+        Detection of the inverted state therefore can't trust self.super_l_keycode;
+        it works off the canonically-Super position (the lower of the two keycodes,
+        by X11 convention) and reads the keysym there. If Hyper_L is found, the
+        mapping is inverted and we re-canonicalize the cached keycodes so cleanup
+        and subsequent swap operations restore the canonical layout instead of
+        cementing the inverted one.
+        """
+        if not self.super_l_keycode or not self.hyper_l_keycode:
+            return
         try:
-            super_map = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
-            hyper_map = self._dpy.get_keyboard_mapping(self.hyper_l_keycode, 1)
-            # If a previous run crashed mid-swap, the mapping is already inverted.
-            # Restore canonical keysyms so cleanup() doesn't restore the swapped state.
-            if super_map and len(super_map) > 0 and len(super_map[0]) > 0 and super_map[0][0] == self.hyper_l_keysym:
+            canon_super_kc = min(self.super_l_keycode, self.hyper_l_keycode)
+            canon_hyper_kc = max(self.super_l_keycode, self.hyper_l_keycode)
+            canon_super_map = self._dpy.get_keyboard_mapping(canon_super_kc, 1)
+            inverted = (
+                canon_super_map and canon_super_map[0] and canon_super_map[0][0] == self.hyper_l_keysym
+            )
+            if inverted:
+                self.super_l_keycode = canon_super_kc
+                self.hyper_l_keycode = canon_hyper_kc
                 self.super_l_orig = [[self.super_l_keysym]]
                 self.hyper_l_orig = [[self.hyper_l_keysym]]
             else:
-                self.super_l_orig = super_map
-                self.hyper_l_orig = hyper_map
+                self.super_l_orig = self._dpy.get_keyboard_mapping(self.super_l_keycode, 1)
+                self.hyper_l_orig = self._dpy.get_keyboard_mapping(self.hyper_l_keycode, 1)
         except Exception as e:
             logger.error(f"Error backing up key mappings: {e}")
             logger.debug("", exc_info=True)
