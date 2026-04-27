@@ -58,3 +58,14 @@ class Config:
 
         self._desktop_ratios[self.active_desktop] = new_idx
         self.reload()
+
+    def peek_center_width(self, step: int = 0) -> int:
+        """Return the center_width that next_ratio(step) would produce, without committing.
+
+        Used by animated transitions to compute target geometry before deciding
+        whether the animation succeeded — the actual ratio change is committed
+        only after the animation lands.
+        """
+        current_idx = self._desktop_ratios.get(self.active_desktop, self._DEFAULT_RATIO_IDX)
+        new_idx = (current_idx + step) % len(self.supported_ratios)
+        return round(self.wa_w * self.supported_ratios[new_idx])
