@@ -105,8 +105,7 @@ class KeyGrabber:
                 if attempt >= 2:
                     raise
                 logger.warning(
-                    "KeyGrabber: BadAccess — another client may own a grab. "
-                    "Retrying in %.0fs... (%s)",
+                    "KeyGrabber: BadAccess — another client may own a grab. Retrying in %.0fs... (%s)",
                     _BAD_ACCESS_RETRY_DELAY,
                     e,
                 )
@@ -116,7 +115,10 @@ class KeyGrabber:
         """Main event loop. Returns normally when stop() is called.
 
         Raises KeyGrabberError if BadAccess persists after retry, or any
-        other unexpected exception escapes the event loop.
+        other unexpected exception escapes the event loop. Cleanup of grabs
+        is the caller's responsibility — the caller's finally block already
+        owns the lifecycle, so duplicating ungrab_keys() here would just
+        double-call it on every exit path.
         """
         self._wake_r, self._wake_w = os.pipe()
         try:
@@ -125,10 +127,8 @@ class KeyGrabber:
                 self._grab_with_retry()
                 self._run_loop()
             except BadAccess as e:
-                self.ungrab_keys()
                 raise KeyGrabberError("BadAccess persists after retry") from e
             except Exception as e:
-                self.ungrab_keys()
                 raise KeyGrabberError(f"event loop crashed: {e}") from e
         finally:
             os.close(self._wake_r)
