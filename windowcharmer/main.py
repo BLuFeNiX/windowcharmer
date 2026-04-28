@@ -35,8 +35,11 @@ class WindowCharmerApp:
         self.mapper = KeyboardMapper()
         self.grab_dpy: Display = DisplayPool.get_display("grabber")
 
+        # refresh_keycodes() returns the physical Super keycode (the canonical
+        # lower position), which is what the tracker should watch — not where
+        # the Super_L keysym currently lives, since those diverge after the swap.
         self.passthrough_tracker = SuperPassthroughTracker(
-            self.mapper.super_l_keycode,
+            self.mapper.refresh_keycodes(),
             self.mapper.simulate_hyper_press,
         )
 

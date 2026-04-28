@@ -273,6 +273,140 @@ def test_force_canonical_returns_false_when_keysym_missing() -> None:
     assert mapper.force_canonical() is False
 
 
+def test_refresh_prefers_level_zero_over_residual_higher_levels() -> None:
+    """Regression: post-swap, _change_keyboard_mapping preserves levels 1+, so
+    canon-Super's keycode (where we just wrote Hyper_L at level 0) still has
+    the original Super_L sitting at level 2 (xkb US: keycode 133 = Super_L
+    NoSymbol Super_L). An "any-level" scan would see Super_L at kc 133 AND
+    kc 207, pick 133 (the lower), and collapse both keycodes onto 133 —
+    causing canon_super_kc == canon_hyper_kc, idempotency to misfire, and
+    cleanup to write both originals to the same keycode (destroying the
+    keymap such that the physical Super key stops producing any keysym).
+
+    Two-pass scan must prefer level 0: Super_L lives where it appears at
+    level 0 (kc 207 here), even if it also appears at higher levels of
+    other keycodes.
+    """
+    # Post-swap state on a real US xkb layout: kc 133's level 2 still holds
+    # the original Super_L (preserved by d40cd9e), kc 207's level 1 still
+    # holds the original Hyper_L. Both keycodes carry both keysyms.
+    mapping = {
+        _CANON_SUPER_KC: [_HYPER_L, 0, _SUPER_L],
+        _CANON_HYPER_KC: [_SUPER_L, _HYPER_L, 0, _HYPER_L],
+    }
+    mapper = _make_mapper(super_kc=_CANON_SUPER_KC, hyper_kc=_CANON_HYPER_KC, mapping=mapping)
+
+    mapper._refresh_keycodes_locked()
+
+    # Super_L's level-0 home is kc 207, Hyper_L's level-0 home is kc 133.
+    assert mapper.super_l_keycode == _CANON_HYPER_KC, (
+        f"Super_L should be tracked at its level-0 keycode (207), got {mapper.super_l_keycode}"
+    )
+    assert mapper.hyper_l_keycode == _CANON_SUPER_KC, (
+        f"Hyper_L should be tracked at its level-0 keycode (133), got {mapper.hyper_l_keycode}"
+    )
+    # Canon positions stay stable across the swap (lower=Super, higher=Hyper).
+    assert mapper._canon_super_kc == _CANON_SUPER_KC
+    assert mapper._canon_hyper_kc == _CANON_HYPER_KC
+
+
+def test_full_swap_roundtrip_on_user_layout_restores_canonical() -> None:
+    """End-to-end regression for the user's actual xkb US layout, where
+    Super_L is at levels 0 and 2 of kc 133 and Hyper_L is at level 1 of
+    kc 207. The combination of two-pass refresh + level-preserving writes
+    must round-trip cleanly: swap → echo → cleanup leaves the keymap
+    bit-for-bit identical to the canonical starting state.
+
+    Pre-fix this would corrupt: cleanup wrote both originals to kc 133
+    (because canon_super_kc collapsed onto canon_hyper_kc), leaving the
+    physical Super key (kc 133) with NoSymbol at level 0.
+    """
+    canonical_133 = [_SUPER_L, 0, _SUPER_L]
+    canonical_207 = [0, _HYPER_L, 0, _HYPER_L]
+    live = {
+        _CANON_SUPER_KC: list(canonical_133),
+        _CANON_HYPER_KC: list(canonical_207),
+    }
+    mapper = _make_mapper(super_kc=_CANON_SUPER_KC, hyper_kc=_CANON_HYPER_KC, mapping=live)
+
+    def _live_get(kc: int, count: int) -> list[list[int]]:
+        return [live.get(kc + i, []) for i in range(count)]
+
+    def _live_write(kc: int, keysyms: list[tuple[int, ...]]) -> None:
+        # Match the real change_keyboard_mapping(kc, [row]) signature.
+        live[kc] = list(keysyms[0])
+
+    mapper._dpy.get_keyboard_mapping.side_effect = _live_get
+    mapper._dpy.change_keyboard_mapping.side_effect = _live_write
+
+    # Simulate the daemon lifecycle: backup happened in _make_mapper's __init__,
+    # so super_l_orig/hyper_l_orig are already captured. Swap, then echo, then
+    # cleanup.
+    mapper.apply_super_hyper_swap()
+    # Echo: MappingNotify routes back through apply_super_hyper_swap.
+    mapper.apply_super_hyper_swap()
+    mapper.cleanup()
+
+    assert live[_CANON_SUPER_KC] == canonical_133, (
+        f"kc 133 not restored; got {live[_CANON_SUPER_KC]} expected {canonical_133}"
+    )
+    assert live[_CANON_HYPER_KC] == canonical_207, (
+        f"kc 207 not restored; got {live[_CANON_HYPER_KC]} expected {canonical_207}"
+    )
+
+
+def test_apply_swap_does_not_collapse_canon_on_user_layout() -> None:
+    """Regression for the canon-collapse bug: when Super_L exists at
+    level 0 of canonical-Super (kc 133) AND at level 2 of the same kc,
+    the swap's MappingNotify echo must not cause canon_super_kc and
+    canon_hyper_kc to collapse onto the same value.
+    """
+    live = {
+        _CANON_SUPER_KC: [_SUPER_L, 0, _SUPER_L],
+        _CANON_HYPER_KC: [0, _HYPER_L, 0, _HYPER_L],
+    }
+    mapper = _make_mapper(super_kc=_CANON_SUPER_KC, hyper_kc=_CANON_HYPER_KC, mapping=live)
+
+    def _live_get(kc: int, count: int) -> list[list[int]]:
+        return [live.get(kc + i, []) for i in range(count)]
+
+    def _live_write(kc: int, keysyms: list[tuple[int, ...]]) -> None:
+        live[kc] = list(keysyms[0])
+
+    mapper._dpy.get_keyboard_mapping.side_effect = _live_get
+    mapper._dpy.change_keyboard_mapping.side_effect = _live_write
+
+    mapper.apply_super_hyper_swap()
+    # Echo.
+    mapper.apply_super_hyper_swap()
+
+    assert mapper._canon_super_kc != mapper._canon_hyper_kc, (
+        f"canon collapsed onto kc {mapper._canon_super_kc} — cleanup will destroy the keymap"
+    )
+    assert mapper._canon_super_kc == _CANON_SUPER_KC
+    assert mapper._canon_hyper_kc == _CANON_HYPER_KC
+
+
+def test_refresh_keycodes_returns_physical_super_kc_after_swap() -> None:
+    """The passthrough tracker must watch the *physical* Super key position,
+    not where the Super_L keysym moved to after the swap. refresh_keycodes
+    returns canon_super_kc (the lower of the pair) so the tracker sees a
+    stable physical position regardless of swap state.
+    """
+    # Canonical state.
+    live = {_CANON_SUPER_KC: [_SUPER_L], _CANON_HYPER_KC: [_HYPER_L]}
+    mapper = _make_mapper(super_kc=_CANON_SUPER_KC, hyper_kc=_CANON_HYPER_KC, mapping=live)
+    assert mapper.refresh_keycodes() == _CANON_SUPER_KC
+
+    # Post-swap state: Super_L now at canonical-Hyper position.
+    live = {_CANON_SUPER_KC: [_HYPER_L], _CANON_HYPER_KC: [_SUPER_L]}
+    mapper._dpy.get_keyboard_mapping.side_effect = lambda kc, count: [live.get(kc + i, []) for i in range(count)]
+    assert mapper.refresh_keycodes() == _CANON_SUPER_KC, (
+        "refresh_keycodes must return the physical Super position (kc 133), "
+        "not where the Super_L keysym now lives (kc 207)"
+    )
+
+
 def test_swap_preserves_higher_shift_levels() -> None:
     """Custom xkb layouts may bind Super_L/Hyper_L at multiple shift levels
     (e.g. `keycode 207 = NoSymbol Hyper_L NoSymbol Hyper_L`). The swap must
