@@ -57,12 +57,21 @@ def _make_dpy(xtest_atom: int = 289) -> MagicMock:
     return dpy
 
 
-def _xi2_key_event(evtype: int, keycode: int, sourceid: int) -> MagicMock:
-    """Synthesize an XI2 GenericEvent for any KeyPress/KeyRelease/RawKey* evtype."""
+def _xi2_key_event(
+    evtype: int, keycode: int, sourceid: int, deviceid: int | None = None
+) -> MagicMock:
+    """Synthesize an XI2 GenericEvent for any KeyPress/KeyRelease/RawKey* evtype.
+
+    For raw events, deviceid defaults to sourceid (slave-originated, what
+    we keep). Pass an explicit deviceid != sourceid to simulate a master
+    echo (which the manager filters out).
+    """
     event = MagicMock()
     event.type = GenericEventCode
     event.evtype = evtype
-    event.data = SimpleNamespace(detail=keycode, sourceid=sourceid)
+    if deviceid is None:
+        deviceid = sourceid
+    event.data = SimpleNamespace(detail=keycode, sourceid=sourceid, deviceid=deviceid)
     return event
 
 
@@ -201,6 +210,32 @@ def test_real_raw_keyrelease_reaches_tracker_with_release_type() -> None:
     forwarded = tracker.handle_event.call_args.args[0]
     assert forwarded.type == X.KeyRelease
     assert forwarded.detail == 133
+
+
+def test_raw_master_echo_is_dropped() -> None:
+    """A single physical press generates raw events from both the slave
+    (deviceid=sourceid) AND its master (deviceid=master, sourceid=slave).
+    The master echo must be filtered so the tracker sees one event per
+    press, not two."""
+    mgr, _, tracker, _, _ = _make_manager()
+    mgr._xtest_devices = frozenset()
+
+    master_id = 3
+    slave_id = _REAL_KBD_ID
+
+    # Slave-originated event: keep.
+    slave_event = _xi2_key_event(
+        xinput.RawKeyPress, keycode=133, sourceid=slave_id, deviceid=slave_id
+    )
+    # Master echo of the same press: drop.
+    master_echo = _xi2_key_event(
+        xinput.RawKeyPress, keycode=133, sourceid=slave_id, deviceid=master_id
+    )
+
+    mgr._handle_event(slave_event)
+    mgr._handle_event(master_echo)
+
+    assert tracker.handle_event.call_count == 1
 
 
 def test_regular_keypress_at_non_grabbed_keycode_does_not_reach_tracker() -> None:
@@ -357,16 +392,17 @@ def test_start_selects_hierarchy_on_all_devices_not_all_master_devices() -> None
     masks = root.xinput_select_events.call_args.args[0]
     by_device = {entry[0]: entry[1] for entry in masks}
 
-    assert xinput.AllDevices in by_device, "HierarchyChanged must be selected on AllDevices"
+    assert xinput.AllDevices in by_device, "events must be selected on AllDevices"
     assert by_device[xinput.AllDevices] & xinput.HierarchyChangedMask
-    # Raw events also belong on AllDevices — they need to capture every
-    # device's input regardless of which master it's attached to.
     assert by_device[xinput.AllDevices] & xinput.RawKeyPressMask
     assert by_device[xinput.AllDevices] & xinput.RawKeyReleaseMask
-    assert xinput.AllMasterDevices in by_device, "Key events must be selected on AllMasterDevices"
-    assert by_device[xinput.AllMasterDevices] & xinput.KeyPressMask
-    # Crucially: HierarchyChangedMask must NOT be on the AllMasterDevices entry.
-    assert not (by_device[xinput.AllMasterDevices] & xinput.HierarchyChangedMask)
+    # Regular KeyPress/Release must NOT be selected on root — passive grab
+    # delivers chord events on its own, and selecting on root would cause
+    # those events to arrive twice (once via grab, once via select).
+    for _scope, mask in by_device.items():
+        assert not (mask & xinput.KeyPressMask), (
+            f"Regular KeyPress should not be in select_events; found in scope {_scope}"
+        )
 
 
 def test_unknown_xi2_evtype_is_silently_ignored() -> None:

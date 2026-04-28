@@ -165,22 +165,18 @@ class InputManager:
 
         root = self.dpy.screen().root
         try:
-            # Three different event-mask scopes:
-            #   - AllMasterDevices, KeyPress/Release: regular events from the
-            #     master keyboard. These arrive when a passive grab fires
-            #     (Super+Up etc) — that's how tile chords reach us.
-            #   - AllDevices, RawKeyPress/Release: every key event from
-            #     every device, fired BEFORE focus/grab dispatch. This is
-            #     what feeds the bare-Super-tap detector — without raw
-            #     events we'd only see keys when the daemon's window was
-            #     focused (never, in practice).
-            #   - AllDevices, HierarchyChanged: device-independent event
-            #     for hot-plug. The X server REJECTS this mask on
-            #     AllMasterDevices with a BadValue, which is why the masks
-            #     get split by deviceid scope.
+            # All XI2 events we care about come via raw events + hot-plug —
+            # both selected on AllDevices, which the X server requires for
+            # HierarchyChanged anyway (it rejects HierarchyChangedMask on
+            # AllMasterDevices with a BadValue). Tile chord events do NOT
+            # need a regular KeyPress/Release selection on root: when a
+            # passive grab activates, events are delivered to the grabbing
+            # client per the grab's own event_mask, independently of any
+            # XISelectEvents call. Subscribing on root anyway just delivers
+            # duplicates (root is the parent of every window, so its
+            # XISelectEvents covers all descendants).
             root.xinput_select_events(
                 [
-                    (xinput.AllMasterDevices, xinput.KeyPressMask | xinput.KeyReleaseMask),
                     (
                         xinput.AllDevices,
                         xinput.RawKeyPressMask | xinput.RawKeyReleaseMask | xinput.HierarchyChangedMask,
@@ -317,9 +313,23 @@ class InputManager:
     def _handle_raw_key_event(self, evtype: int, data: Any) -> None:
         """Raw events fire before focus/grab dispatch — every key on every
         device, regardless of which window is focused. This is what feeds
-        the bare-Super-tap detector. Filter our own xtest injections by
-        sourceid so simulate_hyper_press's output doesn't loop back."""
+        the bare-Super-tap detector.
+
+        Two filters before forwarding to the tracker:
+
+          - sourceid in xtest_devices: drop our own simulate_hyper_press
+            output to break the feedback loop (otherwise each forwarded
+            tap re-triggers the bare-tap detection).
+
+          - deviceid != sourceid: drop master echoes. With AllDevices in
+            the select scope, a single physical press fires raw events
+            from both the originating slave (deviceid=slave, sourceid=
+            slave) and its master (deviceid=master, sourceid=slave).
+            We only want one event per press; keep slave-originated.
+        """
         if data.sourceid in self._xtest_devices:
+            return
+        if data.deviceid != data.sourceid:
             return
         core_type = X.KeyPress if evtype == xinput.RawKeyPress else X.KeyRelease
         self.passthrough_tracker.handle_event(_CoreKeyEventAdapter(core_type, data.detail))
