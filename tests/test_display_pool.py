@@ -12,12 +12,12 @@ def _reset_pool() -> None:
 def test_get_display_creates_and_caches() -> None:
     _reset_pool()
     fake = MagicMock()
-    with patch("windowcharmer.x11.display_pool.display.Display", return_value=fake) as Display:
+    with patch("windowcharmer.x11.display_pool.display.Display", return_value=fake) as display_cls:
         first = DisplayPool.get_display("wm")
         second = DisplayPool.get_display("wm")
     assert first is fake
     assert second is fake
-    assert Display.call_count == 1
+    assert display_cls.call_count == 1
 
 
 def test_get_display_separate_per_name() -> None:

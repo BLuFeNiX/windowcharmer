@@ -4,7 +4,7 @@ from windowcharmer.config.dimensions import ScreenDimensions
 
 
 @pytest.mark.parametrize(
-    "wa_w, wa_y, wa_h, center_width",
+    ("wa_w", "wa_y", "wa_h", "center_width"),
     [
         (2560, 0, 1440, 853),  # 2560x1440, ~1/3 center (853*3=2559; 1px gap from //2)
         (3840, 0, 1600, 1536),  # 3840x1600, 40% center
@@ -19,7 +19,7 @@ def test_column_adjacency(wa_w: int, wa_y: int, wa_h: int, center_width: int) ->
 
 
 @pytest.mark.parametrize(
-    "wa_w, center_width",
+    ("wa_w", "center_width"),
     [
         (1921, 768),  # 3-column odd width
         (1920, 768),  # 3-column even width
@@ -32,7 +32,7 @@ def test_columns_cover_full_width(wa_w: int, center_width: int) -> None:
 
 
 @pytest.mark.parametrize(
-    "wa_w, wa_y, wa_h, center_width",
+    ("wa_w", "wa_y", "wa_h", "center_width"),
     [
         (2560, 0, 1440, 853),
         (5120, 40, 1400, 2048),

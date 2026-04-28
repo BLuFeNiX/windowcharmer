@@ -27,7 +27,7 @@ def _make_wm() -> WindowManager:
         return WindowManager()
 
 
-@pytest.fixture()
+@pytest.fixture
 def wm() -> WindowManager:
     return _make_wm()
 
@@ -105,7 +105,7 @@ def _make_wm_with_dim() -> WindowManager:
 
 
 @pytest.mark.parametrize(
-    "start_zone, action_in, action_out",
+    ("start_zone", "action_in", "action_out"),
     [
         # Left cycling
         ("unknown", "left", "left"),
@@ -322,7 +322,7 @@ def test_resize_all_windows_includes_sticky_window() -> None:
 
 
 @pytest.mark.parametrize(
-    "zone, expected",
+    ("zone", "expected"),
     [
         ("left-center", "left"),
         ("right-center", "right"),

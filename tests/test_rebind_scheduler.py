@@ -16,11 +16,11 @@ from windowcharmer.input.rebind_scheduler import RebindScheduler
 def test_schedule_arms_a_timer() -> None:
     cb = MagicMock()
     fake_timer = MagicMock()
-    with patch("windowcharmer.input.rebind_scheduler.threading.Timer", return_value=fake_timer) as TimerCls:
+    with patch("windowcharmer.input.rebind_scheduler.threading.Timer", return_value=fake_timer) as timer_cls:
         sched = RebindScheduler(callback=cb)
         sched.schedule()
 
-    TimerCls.assert_called_once_with(0.25, cb)
+    timer_cls.assert_called_once_with(0.25, cb)
     fake_timer.start.assert_called_once()
 
 

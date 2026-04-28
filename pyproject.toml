@@ -34,11 +34,8 @@ windowcharmer = "windowcharmer.main:main"
 testpaths = ["tests"]
 
 [tool.mypy]
+strict = true
 ignore_missing_imports = true
-check_untyped_defs = true
-disallow_untyped_defs = true
-warn_return_any = true
-warn_unused_ignores = true
 
 [tool.ruff]
 line-length = 120
@@ -47,7 +44,25 @@ line-length = 120
 quote-style = "double"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+select = [
+  "E",     # pycodestyle errors
+  "F",     # pyflakes
+  "I",     # isort
+  "B",     # flake8-bugbear
+  "UP",    # pyupgrade
+  "SIM",   # flake8-simplify
+  "RUF",   # ruff-specific
+  "N",     # pep8-naming
+  "C4",    # flake8-comprehensions
+  "PIE",   # flake8-pie (misc improvements)
+  "RET",   # flake8-return
+  "PERF",  # perflint
+  "PTH",   # flake8-use-pathlib
+  "ICN",   # flake8-import-conventions
+  "PT",    # flake8-pytest-style
+  "ERA",   # eradicate (commented-out code)
+  "A",     # flake8-builtins (don't shadow)
+]
 ignore = [
   "SIM108",   # ternary-operator — readability preference
 ]

@@ -9,6 +9,7 @@ import contextlib
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from Xlib import X
 from Xlib.ext import xinput
 from Xlib.ext.ge import GenericEventCode
@@ -339,12 +340,8 @@ def test_start_raises_input_manager_error_when_xi2_missing() -> None:
     mgr, dpy, _, _, _ = _make_manager()
     dpy.has_extension.return_value = False
 
-    try:
+    with pytest.raises(InputManagerError, match="XInputExtension"):
         mgr.start()
-    except InputManagerError as e:
-        assert "XInputExtension" in str(e)
-    else:
-        raise AssertionError("expected InputManagerError")
 
 
 # ---------------------------------------------------------------------------

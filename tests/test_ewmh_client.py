@@ -38,7 +38,7 @@ def _make_client() -> EwmhClient:
         return EwmhClient(dpy)
 
 
-@pytest.fixture()
+@pytest.fixture
 def client() -> EwmhClient:
     return _make_client()
 
