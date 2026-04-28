@@ -35,11 +35,11 @@ class WindowCharmerApp:
         self.mapper = KeyboardMapper()
         self.grab_dpy: Display = DisplayPool.get_display("grabber")
 
-        # refresh_keycodes() returns the physical Super keycode (the canonical
-        # lower position), which is what the tracker should watch — not where
-        # the Super_L keysym currently lives, since those diverge after the swap.
+        # The tracker watches the *physical* Super key — stable across the swap.
+        # Where the Super_L keysym lives moves when we swap; the physical key
+        # doesn't, and that's what the user actually presses.
         self.passthrough_tracker = SuperPassthroughTracker(
-            self.mapper.refresh_keycodes(),
+            self.mapper.physical_super_kc(),
             self.mapper.simulate_hyper_press,
         )
 
@@ -91,8 +91,7 @@ class WindowCharmerApp:
     def _monitor_callback(self, event: rq.Event) -> None:
         """Handle low-level XRecord events for keycode cache and Super passthrough."""
         if event.type == X.MappingNotify:
-            super_kc = self.mapper.refresh_keycodes()
-            self.passthrough_tracker.update_keycode(super_kc)
+            self.passthrough_tracker.update_keycode(self.mapper.physical_super_kc())
             return
 
         if event.type in (X.KeyPress, X.KeyRelease):

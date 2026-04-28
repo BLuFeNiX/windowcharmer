@@ -68,16 +68,12 @@ def test_on_mapping_notify_dispatches_only_for_keyboard_request() -> None:
 
 def test_monitor_callback_passes_refreshed_keycode_atomically() -> None:
     """Locks in the atomic-refresh contract: the keycode handed to the
-    passthrough tracker must come from refresh_keycodes()'s return value, not
-    from a follow-up read of self.mapper.super_l_keycode (which races a
-    concurrent apply_super_hyper_swap that would mutate the field between
-    refresh and read).
+    passthrough tracker must come from physical_super_kc()'s return value
+    (which scans under the mapper lock) — not from a follow-up read of a
+    cached field, which would race a concurrent apply_super_hyper_swap.
     """
     app = _make_app()
-    app.mapper.refresh_keycodes.return_value = 999
-    # super_l_keycode is deliberately a different value to detect a regression
-    # to the racy "refresh; then read self.mapper.super_l_keycode" pattern.
-    app.mapper.super_l_keycode = 111
+    app.mapper.physical_super_kc.return_value = 999
 
     app._monitor_callback(MagicMock(type=X.MappingNotify))
 

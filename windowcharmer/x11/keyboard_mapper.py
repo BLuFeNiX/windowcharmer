@@ -1,5 +1,7 @@
 import logging
 import threading
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 from Xlib import XK, X
 from Xlib.display import Display
@@ -10,211 +12,241 @@ from .display_pool import DisplayPool
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class KeysymPositions:
+    """Where Super_L and Hyper_L keysyms currently live in the X11 keymap.
+
+    A keycode here means: the position at which a press produces this
+    keysym at shift level 0 — falling back to "any level" only when
+    level 0 doesn't match. See `scan_keymap_positions` for the rationale.
+
+    The `physical_*` properties expose the xkb-conventional physical key
+    positions (lower keycode = Super, higher = Hyper). These are *stable
+    across our own swap*: min/max is invariant under swapping the two
+    values, so callers that need to track the physical Super key (e.g.
+    the bare-tap passthrough) get a value that doesn't move when the
+    keysyms are exchanged.
+    """
+
+    super_l_kc: int
+    hyper_l_kc: int
+
+    @property
+    def physical_super_kc(self) -> int:
+        return min(self.super_l_kc, self.hyper_l_kc)
+
+    @property
+    def physical_hyper_kc(self) -> int:
+        return max(self.super_l_kc, self.hyper_l_kc)
+
+    @property
+    def both_present(self) -> bool:
+        return bool(self.super_l_kc and self.hyper_l_kc)
+
+
+def scan_keymap_positions(dpy: Display, super_keysym: int, hyper_keysym: int) -> KeysymPositions:
+    """Scan the live X server keymap and return current positions of both keysyms.
+
+    Pure function: reads via get_keyboard_mapping but mutates nothing. Returns
+    a snapshot the caller can reason about as a single value.
+
+    Two-pass scan, level 0 preferred:
+
+    Pass 1 matches `keysyms[0]` only — the level-0 keysym is what an unmodified
+    keypress produces, so this is the keycode the keysym actually "lives" at.
+    Crucially, it ignores residual matches at higher levels: the swap's
+    preserve-higher-levels write semantics intentionally leave the previous
+    keysym at level 1+ of the rewritten keycode, and an "any-level" search
+    would find both keysyms there and collapse them onto the same keycode.
+
+    Pass 2 falls back to "any level" only if level 0 didn't yield a match.
+    Covers layouts where a modifier is bound only at a non-zero shift level
+    on a fresh canonical keymap (xkb US:
+    `keycode 207 = NoSymbol Hyper_L NoSymbol Hyper_L`).
+
+    Returns kc=0 for any keysym not found.
+    """
+    info = dpy.display.info
+    kc_min = info.min_keycode
+    count = info.max_keycode - kc_min + 1
+    mapping = dpy.get_keyboard_mapping(kc_min, count)
+
+    super_kc = 0
+    hyper_kc = 0
+
+    # Pass 1: prefer the keycode where the keysym is at level 0.
+    for offset, keysyms in enumerate(mapping):
+        if not keysyms:
+            continue
+        kc = kc_min + offset
+        if not super_kc and keysyms[0] == super_keysym:
+            super_kc = kc
+        if not hyper_kc and keysyms[0] == hyper_keysym:
+            hyper_kc = kc
+        if super_kc and hyper_kc:
+            return KeysymPositions(super_l_kc=super_kc, hyper_l_kc=hyper_kc)
+
+    # Pass 2: any level (only for keysyms missed by pass 1).
+    for offset, keysyms in enumerate(mapping):
+        if not keysyms:
+            continue
+        kc = kc_min + offset
+        if not super_kc and super_keysym in keysyms:
+            super_kc = kc
+        if not hyper_kc and hyper_keysym in keysyms:
+            hyper_kc = kc
+        if super_kc and hyper_kc:
+            break
+
+    return KeysymPositions(super_l_kc=super_kc, hyper_l_kc=hyper_kc)
+
+
+@dataclass(frozen=True)
+class _Backup:
+    """Captured-once state used to restore the keymap on cleanup.
+
+    Holds the original rows from the canonical positions at startup, plus
+    those positions themselves so cleanup writes to the right keycodes
+    even if scan_keymap_positions would now report different ones (e.g.
+    after we've applied our swap).
+    """
+
+    canon_super_kc: int
+    canon_hyper_kc: int
+    super_row: Sequence[Sequence[int]]
+    hyper_row: Sequence[Sequence[int]]
+
+
 class KeyboardMapper:
-    """Manages the Super_L ↔ Hyper_L keymap swap and key event simulation."""
+    """Manages the Super_L ↔ Hyper_L keymap swap and key event simulation.
+
+    State invariants:
+    - `_backup` is captured once at __init__ and never mutated afterward.
+      It records what cleanup() should write to restore the keymap.
+    - All other operations re-scan the live keymap each call (via
+      `scan_keymap_positions`) and reason about a fresh snapshot — there
+      is no mutable "current position" cache on self that can drift.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._dpy: Display = DisplayPool.get_display("mapper")
 
-        self.super_l_keysym: int = XK.string_to_keysym("Super_L")
-        self.hyper_l_keysym: int = XK.string_to_keysym("Hyper_L")
+        self._super_l_keysym: int = XK.string_to_keysym("Super_L")
+        self._hyper_l_keysym: int = XK.string_to_keysym("Hyper_L")
 
-        self.super_l_keycode: int = self._dpy.keysym_to_keycode(self.super_l_keysym)
-        self.hyper_l_keycode: int = self._dpy.keysym_to_keycode(self.hyper_l_keysym)
+        self._backup: _Backup | None = self._capture_backup()
 
-        # Canonical (lower=Super, higher=Hyper) positions captured once at
-        # backup time. The swap and cleanup operate on these *stable* keycodes,
-        # not on the runtime-tracked super_l_keycode/hyper_l_keycode pair —
-        # otherwise the post-swap MappingNotify echo (which the KeyGrabber
-        # routes back to apply_super_hyper_swap) would see runtime trackers
-        # already pointing at the swapped positions and re-invert the mapping
-        # forever.
-        self._canon_super_kc: int = 0
-        self._canon_hyper_kc: int = 0
+    def _capture_backup(self) -> _Backup | None:
+        """Snapshot canonical-position rows for cleanup. Detect post-crash
+        inverted state and synthesize minimal-row originals for that case.
 
-        self.super_l_orig: list[list[int]] | None = None
-        self.hyper_l_orig: list[list[int]] | None = None
-
-        self._backup_mappings()
-
-    def _backup_mappings(self) -> None:
-        """Snapshot the current keysym assignments so cleanup() can restore them.
-
-        After a previous run crashed mid-swap, keysym_to_keycode(Super_L) returns
-        the keycode currently holding Super_L — i.e. the canonical Hyper position.
-        Detection of the inverted state therefore can't trust self.super_l_keycode;
-        it works off the canonically-Super position (the lower of the two keycodes,
-        by X11 convention) and reads the keysym there. If Hyper_L is found, the
-        mapping is inverted and we re-canonicalize the cached keycodes so cleanup
-        and subsequent swap operations restore the canonical layout instead of
-        cementing the inverted one.
-
-        Uses _refresh_keycodes_locked rather than the __init__-time
-        keysym_to_keycode values so canon_*_kc derived here matches what
-        apply_super_hyper_swap will derive later — otherwise cleanup could
-        write rows to the wrong keycodes if the two paths disagree.
+        After a previous run crashed mid-swap the canonical Super position
+        holds Hyper_L. We don't have the original level-1+ bindings from
+        that pre-crash state, so synthesize a single-keysym restore — better
+        to lose level-1+ customizations on this one keycode than leave the
+        keymap permanently inverted.
         """
         try:
-            self._refresh_keycodes_locked()
-            if not self.super_l_keycode or not self.hyper_l_keycode:
+            positions = scan_keymap_positions(self._dpy, self._super_l_keysym, self._hyper_l_keysym)
+            if not positions.both_present:
                 logger.warning(
                     "Super_L (kc=%d) or Hyper_L (kc=%d) not found in current keymap — "
                     "keymap swap and bare-Super passthrough will be disabled.",
-                    self.super_l_keycode,
-                    self.hyper_l_keycode,
+                    positions.super_l_kc,
+                    positions.hyper_l_kc,
                 )
-                return
-            canon_super_map = self._dpy.get_keyboard_mapping(self._canon_super_kc, 1)
-            inverted = canon_super_map and canon_super_map[0] and canon_super_map[0][0] == self.hyper_l_keysym
-            if inverted:
-                self.super_l_keycode = self._canon_super_kc
-                self.hyper_l_keycode = self._canon_hyper_kc
-                self.super_l_orig = [[self.super_l_keysym]]
-                self.hyper_l_orig = [[self.hyper_l_keysym]]
-            else:
-                self.super_l_orig = self._dpy.get_keyboard_mapping(self._canon_super_kc, 1)
-                self.hyper_l_orig = self._dpy.get_keyboard_mapping(self._canon_hyper_kc, 1)
+                return None
+
+            canon_super_kc = positions.physical_super_kc
+            canon_hyper_kc = positions.physical_hyper_kc
+            canon_super_row = self._dpy.get_keyboard_mapping(canon_super_kc, 1)
+            is_inverted = (
+                canon_super_row
+                and canon_super_row[0]
+                and canon_super_row[0][0] == self._hyper_l_keysym
+            )
+            if is_inverted:
+                return _Backup(
+                    canon_super_kc=canon_super_kc,
+                    canon_hyper_kc=canon_hyper_kc,
+                    super_row=[[self._super_l_keysym]],
+                    hyper_row=[[self._hyper_l_keysym]],
+                )
+            return _Backup(
+                canon_super_kc=canon_super_kc,
+                canon_hyper_kc=canon_hyper_kc,
+                super_row=canon_super_row,
+                hyper_row=self._dpy.get_keyboard_mapping(canon_hyper_kc, 1),
+            )
         except Exception as e:
             logger.error("Error backing up key mappings: %s", e)
             logger.debug("", exc_info=True)
+            return None
 
-    def _refresh_keycodes_locked(self) -> None:
-        """Re-fetch keycodes by scanning the live server mapping. Caller holds self._lock.
+    def physical_super_kc(self) -> int:
+        """Return the physical Super key keycode from a fresh keymap scan.
 
-        keysym_to_keycode() uses Xlib's internal cache, which is only updated
-        via refresh_keyboard_mapping() on that specific Display. Since the mapper
-        Display never sees MappingNotify events, querying get_keyboard_mapping()
-        directly is the only way to get the current server state.
+        This is the canonical lower keycode (xkb convention), stable across
+        our own swap. Use this — not "where the Super_L keysym lives now" —
+        to detect bare physical Super presses, since post-swap the keysym
+        moves but the physical key doesn't.
 
-        Two-pass scan, level 0 preferred:
-
-        Pass 1 matches keysyms[0] only. The level-0 keysym is what an
-        unmodified keypress produces, so this is the keycode the keysym
-        actually "lives" at. Crucially, it ignores residual matches at
-        higher levels — the swap's preserve-higher-levels semantics
-        intentionally leaves the previous keysym at level 1+ of the
-        rewritten keycode, and an "any level" search would find both
-        keysyms there and collapse them onto the same keycode. That
-        collapse made apply_super_hyper_swap's idempotency check
-        succeed at the wrong canonical position and made cleanup write
-        both originals to the same keycode, destroying the keymap.
-
-        Pass 2 falls back to "any level" only if level 0 didn't yield a
-        match. This preserves the original 84239cc fix for layouts where
-        a modifier is bound only at level 1 (e.g. xkb US:
-        `keycode 207 = NoSymbol Hyper_L NoSymbol Hyper_L`) so the daemon
-        still detects Hyper_L's keycode on a fresh canonical keymap.
-
-        Updates _canon_super_kc / _canon_hyper_kc as a side-effect so
-        every caller sees consistent canonical positions without each
-        having to re-derive min/max.
-        """
-        info = self._dpy.display.info
-        kc_min, count = info.min_keycode, info.max_keycode - info.min_keycode + 1
-        mapping = self._dpy.get_keyboard_mapping(kc_min, count)
-        self.super_l_keycode = 0
-        self.hyper_l_keycode = 0
-
-        # Pass 1: prefer the keycode where the keysym is at level 0.
-        for offset, keysyms in enumerate(mapping):
-            if not keysyms:
-                continue
-            kc = kc_min + offset
-            if not self.super_l_keycode and keysyms[0] == self.super_l_keysym:
-                self.super_l_keycode = kc
-            if not self.hyper_l_keycode and keysyms[0] == self.hyper_l_keysym:
-                self.hyper_l_keycode = kc
-            if self.super_l_keycode and self.hyper_l_keycode:
-                break
-
-        # Pass 2: fall back to any shift level for keysyms not found at level 0.
-        if not self.super_l_keycode or not self.hyper_l_keycode:
-            for offset, keysyms in enumerate(mapping):
-                if not keysyms:
-                    continue
-                kc = kc_min + offset
-                if not self.super_l_keycode and self.super_l_keysym in keysyms:
-                    self.super_l_keycode = kc
-                if not self.hyper_l_keycode and self.hyper_l_keysym in keysyms:
-                    self.hyper_l_keycode = kc
-                if self.super_l_keycode and self.hyper_l_keycode:
-                    break
-
-        if self.super_l_keycode and self.hyper_l_keycode:
-            self._canon_super_kc = min(self.super_l_keycode, self.hyper_l_keycode)
-            self._canon_hyper_kc = max(self.super_l_keycode, self.hyper_l_keycode)
-        logger.debug(
-            "Refreshed keycodes: Super_L=%d, Hyper_L=%d (canon Super kc=%d, canon Hyper kc=%d)",
-            self.super_l_keycode,
-            self.hyper_l_keycode,
-            self._canon_super_kc,
-            self._canon_hyper_kc,
-        )
-
-    def refresh_keycodes(self) -> int:
-        """Refresh from the live keymap and return the physical Super keycode.
-
-        Returns _canon_super_kc — the lower of (super_l_keycode, hyper_l_keycode)
-        — which by xkb convention is the physical Super key position. This is
-        stable across our own keymap swap (min/max is invariant under swapping
-        the two values), so callers like the SuperPassthroughTracker can use it
-        to detect *physical* Super-key presses regardless of which keysym is
-        currently mapped to that position. Returning super_l_keycode directly
-        would point at wherever the keysym moved to post-swap and miss the
-        physical key the user actually presses.
-
-        Returning under the same lock that wrote it keeps callers from racing
-        a concurrent apply_super_hyper_swap that would mutate keycodes between
-        refresh and read.
+        Returns 0 if neither keysym is present in the keymap.
         """
         with self._lock:
-            self._refresh_keycodes_locked()
-            return self._canon_super_kc
+            return scan_keymap_positions(
+                self._dpy, self._super_l_keysym, self._hyper_l_keysym
+            ).physical_super_kc
 
     def apply_super_hyper_swap(self) -> None:
-        """Swap Super_L and Hyper_L keysyms. Idempotent across self-triggered
-        MappingNotify echoes — every change_keyboard_mapping call causes the X
-        server to broadcast MappingNotify, which the KeyGrabber routes back to
-        this method, so the idempotency check has to survive seeing the layout
-        we just wrote.
+        """Swap Super_L and Hyper_L keysyms at level 0 of their canonical positions.
 
-        Canonical positions are re-derived from the live keymap on every call,
-        so a mid-session keymap change (setxkbmap, custom Xkb layouts, etc.)
-        that moves Super_L or Hyper_L to a different keycode does not leave us
-        writing at stale positions and clobbering an unrelated key. The
-        positional convention (lower keycode = canonical Super) keeps canon
-        stable across our own swap echoes, so the idempotency check still
-        reads our prior write and short-circuits.
+        Idempotent across self-triggered MappingNotify echoes — every
+        change_keyboard_mapping call causes the X server to broadcast
+        MappingNotify, which the KeyGrabber routes back to this method.
+        The idempotency check has to survive seeing the layout we just wrote.
+
+        Each call re-scans the live keymap, so a mid-session keymap change
+        (setxkbmap, custom Xkb layouts) that moves Super_L or Hyper_L to
+        different keycodes redirects the swap to the new positions rather
+        than clobbering whatever now lives at the stale canonical position.
+        The positional convention (lower keycode = canonical Super) keeps
+        physical positions stable across our own swap echoes, so the
+        idempotency check still reads our prior write and short-circuits.
         """
         with self._lock:
             try:
-                if self.super_l_orig is None or self.hyper_l_orig is None:
-                    return  # backup never completed; can't safely write
-                self._refresh_keycodes_locked()
-                if not self.super_l_keycode or not self.hyper_l_keycode:
+                if self._backup is None:
+                    return
+                positions = scan_keymap_positions(self._dpy, self._super_l_keysym, self._hyper_l_keysym)
+                if not positions.both_present:
                     logger.debug("Super_L or Hyper_L missing from current keymap — skipping swap.")
                     return
+
+                canon_super_kc = positions.physical_super_kc
+                canon_hyper_kc = positions.physical_hyper_kc
 
                 # Read the keysym at the canonical Super position. Pre-swap it
                 # holds Super_L; post-swap it holds Hyper_L. Using the canonical
                 # (positionally stable) keycode here is what makes this
-                # idempotent — a refresh-then-check approach reads back our
-                # own write and concludes "not yet swapped" forever.
-                current_map = self._dpy.get_keyboard_mapping(self._canon_super_kc, 1)
+                # idempotent — refreshing-then-checking on super_l_keycode
+                # would read back our own write and conclude "not yet swapped"
+                # forever.
+                current_map = self._dpy.get_keyboard_mapping(canon_super_kc, 1)
                 already_swapped = (
                     current_map
                     and len(current_map) > 0
                     and len(current_map[0]) > 0
-                    and current_map[0][0] == self.hyper_l_keysym
+                    and current_map[0][0] == self._hyper_l_keysym
                 )
                 if already_swapped:
                     logger.debug("Super_L already mapped to Hyper_L — no action needed.")
                     return
 
                 logger.info("Swapping Super_L and Hyper_L...")
-                self._change_keyboard_mapping(self._canon_super_kc, self.hyper_l_keysym)
-                self._change_keyboard_mapping(self._canon_hyper_kc, self.super_l_keysym)
+                self._set_level0(canon_super_kc, self._hyper_l_keysym)
+                self._set_level0(canon_hyper_kc, self._super_l_keysym)
                 self._dpy.sync()
             except Exception as e:
                 logger.error("Error rebinding keys: %s", e)
@@ -224,30 +256,43 @@ class KeyboardMapper:
         """Restore canonical mapping (lower keycode→Super_L, higher→Hyper_L) without the swap logic.
 
         Returns False if either keysym is absent from the current mapping.
-        Scans the live keymap directly (not via the cached keysym_to_keycode)
-        so it sees mid-session keymap changes from setxkbmap and similar.
+        Scans the live keymap directly so it sees mid-session changes from
+        setxkbmap and similar.
         """
         with self._lock:
-            self._refresh_keycodes_locked()
-            if not self.super_l_keycode or not self.hyper_l_keycode:
+            positions = scan_keymap_positions(self._dpy, self._super_l_keysym, self._hyper_l_keysym)
+            if not positions.both_present:
                 return False
-            self._change_keyboard_mapping(self._canon_super_kc, self.super_l_keysym)
-            self._change_keyboard_mapping(self._canon_hyper_kc, self.hyper_l_keysym)
+            self._set_level0(positions.physical_super_kc, self._super_l_keysym)
+            self._set_level0(positions.physical_hyper_kc, self._hyper_l_keysym)
             self._dpy.sync()
             return True
 
     def simulate_hyper_press(self) -> None:
-        """Simulate a Hyper_L key press+release (used for Super passthrough)."""
+        """Simulate a Hyper_L key press+release (used for Super passthrough).
+
+        Re-scans on each call so the synthesized event lands at wherever
+        Hyper_L currently lives — pre-swap that's typically at level 0 of
+        the canonical Hyper position (or level 1+ of it on layouts like
+        xkb US, where the fake won't produce the keysym without Shift —
+        but the swap normally completes before any passthrough fires, so
+        in practice Hyper_L is at level 0 of the canonical Super keycode
+        by the time we get here).
+        """
         with self._lock:
             try:
-                xtest.fake_input(self._dpy, X.KeyPress, self.hyper_l_keycode)
-                xtest.fake_input(self._dpy, X.KeyRelease, self.hyper_l_keycode)
+                positions = scan_keymap_positions(self._dpy, self._super_l_keysym, self._hyper_l_keysym)
+                if not positions.hyper_l_kc:
+                    logger.warning("Hyper_L not in current keymap — cannot simulate")
+                    return
+                xtest.fake_input(self._dpy, X.KeyPress, positions.hyper_l_kc)
+                xtest.fake_input(self._dpy, X.KeyRelease, positions.hyper_l_kc)
                 self._dpy.flush()
             except Exception as e:
                 logger.error("Error simulating key: %s", e)
                 logger.debug("", exc_info=True)
 
-    def _change_keyboard_mapping(self, keycode: int, new_keysym: int) -> None:
+    def _set_level0(self, keycode: int, new_keysym: int) -> None:
         """Set the level-0 keysym at keycode to new_keysym, preserving levels 1+.
 
         Custom xkb layouts often bind modifier keysyms at multiple shift levels
@@ -264,17 +309,26 @@ class KeyboardMapper:
         self._dpy.change_keyboard_mapping(keycode, [new_row])
 
     def cleanup(self) -> None:
-        """Restore the original keysym assignments at their canonical positions."""
+        """Restore the original keysym assignments at the canonical positions
+        captured at __init__.
+
+        Uses the stored backup positions, NOT a fresh scan. This means a
+        cleanup after setxkbmap moved keysyms mid-session writes the original
+        rows back at the original keycodes — preserving the data/keycode pairing
+        rather than risking writing kc 133's old data at a setxkbmap-relocated
+        kc 100.
+        """
         logger.info("Restoring keyboard mapping...")
         with self._lock:
             try:
-                if self.super_l_orig is None or self.hyper_l_orig is None:
+                if self._backup is None:
                     logger.warning(
-                        "Original key mappings unavailable — keyboard mapping not restored (backup failed at startup)."
+                        "Original key mappings unavailable — keyboard mapping not restored "
+                        "(backup failed at startup)."
                     )
                     return
-                self._dpy.change_keyboard_mapping(self._canon_super_kc, self.super_l_orig)
-                self._dpy.change_keyboard_mapping(self._canon_hyper_kc, self.hyper_l_orig)
+                self._dpy.change_keyboard_mapping(self._backup.canon_super_kc, self._backup.super_row)
+                self._dpy.change_keyboard_mapping(self._backup.canon_hyper_kc, self._backup.hyper_row)
                 self._dpy.sync()
             except Exception as e:
                 logger.warning("Error restoring keyboard mapping: %s", e)
