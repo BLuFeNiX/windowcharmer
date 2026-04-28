@@ -15,13 +15,9 @@ class WakeFromSleepDetector:
     def __init__(
         self,
         callback: Callable[[], None],
-        wait_time: int = _WAIT_TIME,
-        threshold_time: int = _THRESHOLD_TIME,
         stop_event: threading.Event | None = None,
     ) -> None:
         self.callback = callback
-        self.wait_time = wait_time
-        self.threshold_time = threshold_time
         self._stop_event = stop_event or threading.Event()
 
     def start(self) -> None:
@@ -32,11 +28,11 @@ class WakeFromSleepDetector:
         # gets misread as a sleep on the first tick.
         last_check = time.time()
         # wait() returns True when the event fires, False on timeout — so the
-        # loop only continues after a full wait_time has elapsed and shuts
+        # loop only continues after a full _WAIT_TIME has elapsed and shuts
         # down promptly when stop_event is set.
-        while not self._stop_event.wait(self.wait_time):
+        while not self._stop_event.wait(_WAIT_TIME):
             now = time.time()
-            if (now - last_check) > (self.wait_time + self.threshold_time):
+            if (now - last_check) > (_WAIT_TIME + _THRESHOLD_TIME):
                 logger.info("System wake detected (time jump: %.2fs)", now - last_check)
                 self.callback()
             last_check = now

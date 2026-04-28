@@ -6,7 +6,6 @@ import sys
 import threading
 from collections.abc import Callable
 
-from Xlib import X
 from Xlib.display import Display
 
 from . import __version__
@@ -22,8 +21,6 @@ from .x11.keyboard_mapper import KeyboardMapper
 
 logger = logging.getLogger(__name__)
 
-_REBIND_DEBOUNCE_SECONDS = 0.25
-
 
 class WindowCharmerApp:
     def __init__(self, no_animate: bool = False) -> None:
@@ -33,10 +30,7 @@ class WindowCharmerApp:
         self.mapper = KeyboardMapper()
         self.input_dpy: Display = DisplayPool.get_display("input")
 
-        self.rebind_scheduler = RebindScheduler(
-            callback=self.mapper.apply_super_hyper_swap,
-            delay_seconds=_REBIND_DEBOUNCE_SECONDS,
-        )
+        self.rebind_scheduler = RebindScheduler(callback=self.mapper.apply_super_hyper_swap)
 
         # Tracker watches the *physical* Super key — stable across the swap.
         # Where the Super_L keysym lives moves when we swap; the physical key
@@ -58,7 +52,6 @@ class WindowCharmerApp:
             passthrough_tracker=self.passthrough_tracker,
             on_keymap_change=self._on_keymap_change,
             on_keyboard_hotplug=self.rebind_scheduler.schedule,
-            modifier=X.Mod4Mask,
         )
 
     def stop(self) -> None:

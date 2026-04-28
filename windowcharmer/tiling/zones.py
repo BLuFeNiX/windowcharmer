@@ -12,7 +12,6 @@ def determine_tile_zone(
     window: Window,
     dim: ScreenDimensions | None,
     is_maximized_vertically: bool,
-    deviation: int = _ZONE_DEVIATION,
 ) -> str:
     """Heuristically determine which tiling zone a window currently occupies.
 
@@ -40,8 +39,8 @@ def determine_tile_zone(
     x, y = abs(coords.x), abs(coords.y)
     w, h = geom.width, geom.height
 
-    def within(val: int, target: int, dev: int = deviation) -> bool:
-        return target - dev <= val <= target + dev
+    def within(val: int, target: int) -> bool:
+        return target - _ZONE_DEVIATION <= val <= target + _ZONE_DEVIATION
 
     v_pos = "unknown"
     if is_maximized_vertically or within(h, dim.h_full):

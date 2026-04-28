@@ -129,14 +129,12 @@ class InputManager:
         passthrough_tracker: SuperPassthroughTracker,
         on_keymap_change: Callable[[], None],
         on_keyboard_hotplug: Callable[[], None],
-        modifier: int = X.Mod4Mask,
     ) -> None:
         self.dpy = dpy
         self.key_actions = key_actions
         self.passthrough_tracker = passthrough_tracker
         self.on_keymap_change = on_keymap_change
         self.on_keyboard_hotplug = on_keyboard_hotplug
-        self.modifier = modifier
 
         # keycode -> action callback, populated after grabs are placed.
         self._keycode_actions: dict[int, Callable[[], None]] = {}
@@ -222,7 +220,7 @@ class InputManager:
 
     def _grab_tile_keys(self, root: Window) -> None:
         """Place XI2 passive grabs on every configured chord."""
-        modifiers = [self.modifier | lock for lock in _IGNORED_LOCKS]
+        modifiers = [X.Mod4Mask | lock for lock in _IGNORED_LOCKS]
         for key_name, action in self.key_actions.items():
             keysym = XK.string_to_keysym(key_name)
             if not keysym:
@@ -247,7 +245,7 @@ class InputManager:
             )
 
     def _ungrab_tile_keys(self, root: Window) -> None:
-        modifiers = [self.modifier | lock for lock in _IGNORED_LOCKS]
+        modifiers = [X.Mod4Mask | lock for lock in _IGNORED_LOCKS]
         for keycode in list(self._keycode_actions.keys()):
             try:
                 root.xinput_ungrab_keycode(

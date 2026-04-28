@@ -4,6 +4,9 @@ from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
+# Quiet period before a burst of rebind triggers fires the callback.
+_DEBOUNCE_SECONDS = 0.25
+
 
 class RebindScheduler:
     """Debounces calls into a single callback fired after a quiet period.
@@ -18,9 +21,8 @@ class RebindScheduler:
     after the daemon's restoration ran, leaving the keymap inverted at exit.
     """
 
-    def __init__(self, callback: Callable[[], None], delay_seconds: float) -> None:
+    def __init__(self, callback: Callable[[], None]) -> None:
         self._callback = callback
-        self._delay = delay_seconds
         self._lock = threading.Lock()
         self._timer: threading.Timer | None = None
 
@@ -32,7 +34,7 @@ class RebindScheduler:
         with self._lock:
             if self._timer:
                 self._timer.cancel()
-            self._timer = threading.Timer(self._delay, self._callback)
+            self._timer = threading.Timer(_DEBOUNCE_SECONDS, self._callback)
             self._timer.start()
 
     def shutdown(self) -> None:
