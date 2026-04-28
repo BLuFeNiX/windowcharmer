@@ -139,7 +139,11 @@ class WindowManager:
         """
         live = self.props.list_windows()
         live_ids = {win.id for win in live}
+        before = set(self._spawn_geom)
         self._spawn_geom = {wid: g for wid, g in self._spawn_geom.items() if wid in live_ids}
+        pruned = before - set(self._spawn_geom)
+        if pruned:
+            logger.debug("Pruned %d dead window snapshot(s): %s", len(pruned), [hex(p) for p in pruned])
         for win in live:
             if win.id in self._spawn_geom:
                 continue
@@ -151,12 +155,22 @@ class WindowManager:
             if not coords:
                 continue
             self._spawn_geom[win.id] = (abs(coords.x), abs(coords.y), geom.width, geom.height)
+            logger.debug(
+                "Snapshotted 0x%x at (x=%d, y=%d, w=%d, h=%d)",
+                win.id,
+                *self._spawn_geom[win.id],
+            )
 
     def _restore_window(self, window: Window) -> None:
         """Return a window to its captured spawn geometry, or no-op if untracked."""
         snap = self._spawn_geom.get(window.id)
+        logger.debug(
+            "RESTORE: window=0x%x, snap=%s, total_tracked=%d",
+            window.id,
+            snap,
+            len(self._spawn_geom),
+        )
         if snap is None:
-            logger.debug("RESTORE: no spawn geometry for window 0x%x", window.id)
             return
 
         # WMs ignore configure() while max/fullscreen are set — clear those
@@ -172,6 +186,7 @@ class WindowManager:
         # Skip move_and_resize's frame-extents math: the snapshot IS the X11
         # client rect (that's what get_geometry returned), so adjusting again
         # would over-correct by 2x the extents.
+        logger.debug("RESTORE: configuring 0x%x to (x=%d, y=%d, w=%d, h=%d)", window.id, x, y, w, h)
         window.configure(value_mask=X.CWX | X.CWY | X.CWWidth | X.CWHeight, x=x, y=y, width=w, height=h)
 
     def _resolve_tile_cycle(self, action: TileAction, win: Window) -> TileAction:
@@ -203,6 +218,7 @@ class WindowManager:
 
     def execute_action(self, action: TileAction) -> None:
         """Entry point for a tiling action, called from the InputManager event loop on the main thread."""
+        logger.debug("execute_action: %s", action)
         try:
             # Read state before grabbing the server to minimise the held window.
             self._update_state()

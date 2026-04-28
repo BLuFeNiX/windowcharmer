@@ -296,6 +296,7 @@ class InputManager:
         if data.sourceid in self._xtest_devices:
             return
         if data.detail in self._keycode_actions:
+            logger.debug("Chord matched: keycode=%d", data.detail)
             self._keycode_actions[data.detail]()
 
     def _handle_raw_key_event(self, evtype: int, data: Any) -> None:
