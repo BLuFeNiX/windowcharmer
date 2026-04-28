@@ -1,7 +1,7 @@
 """Unit tests for WindowCharmerApp orchestration logic.
 
 The app glues together the window manager, keymap mapper, input manager,
-input services, and super-tap tracker. Tests below exercise routing and
+sleep monitor, and super-tap tracker. Tests below exercise routing and
 lifecycle with all collaborators mocked.
 """
 
@@ -17,7 +17,8 @@ def _make_app() -> WindowCharmerApp:
         patch("windowcharmer.main.WindowManager"),
         patch("windowcharmer.main.KeyboardMapper"),
         patch("windowcharmer.main.InputManager"),
-        patch("windowcharmer.main.InputServices"),
+        patch("windowcharmer.main.WakeFromSleepDetector"),
+        patch("windowcharmer.main.threading.Thread"),
         patch("windowcharmer.main.SuperPassthroughTracker"),
         patch("windowcharmer.main.RebindScheduler"),
         patch("windowcharmer.main.DisplayPool"),
@@ -62,40 +63,105 @@ def test_hotplug_and_sleep_route_through_rebind_scheduler() -> None:
         patch("windowcharmer.main.WindowManager"),
         patch("windowcharmer.main.KeyboardMapper"),
         patch("windowcharmer.main.InputManager") as input_manager_cls,
-        patch("windowcharmer.main.InputServices") as input_services_cls,
+        patch("windowcharmer.main.WakeFromSleepDetector") as sleep_detector_cls,
+        patch("windowcharmer.main.threading.Thread") as thread_cls,
         patch("windowcharmer.main.SuperPassthroughTracker"),
         patch("windowcharmer.main.RebindScheduler") as scheduler_cls,
         patch("windowcharmer.main.DisplayPool"),
         patch("windowcharmer.main.load_keybindings", return_value={}),
     ):
+        thread_cls.return_value.is_alive.return_value = False
         app = WindowCharmerApp()
+        # Sleep monitor is constructed inside run_daemon, not __init__.
+        app.run_daemon()
 
     schedule_fn = scheduler_cls.return_value.schedule
     assert input_manager_cls.call_args.kwargs["on_keyboard_hotplug"] is schedule_fn
-    assert input_services_cls.call_args.kwargs["on_rebind_callback"] is schedule_fn
+    assert sleep_detector_cls.call_args.kwargs["callback"] is schedule_fn
     assert app.rebind_scheduler is scheduler_cls.return_value
 
 
 def test_run_daemon_drains_scheduler_before_mapper_cleanup() -> None:
-    """Shutdown order matters: scheduler.shutdown must run before mapper.cleanup
-    so a late-firing rebind can't re-swap the keymap after canonical restore.
+    """Shutdown order matters: sleep monitor must stop first (so no new
+    debounce timers can be scheduled), then scheduler.shutdown drains any
+    in-flight rebind, then mapper.cleanup restores the canonical keymap.
+
+    Also asserts stop_event.set() runs BEFORE Thread.join(): otherwise join
+    blocks the full 2s timeout in production because the detector never
+    sees the stop signal.
     """
     order: list[str] = []
     with (
         patch("windowcharmer.main.WindowManager"),
         patch("windowcharmer.main.KeyboardMapper") as mapper_cls,
         patch("windowcharmer.main.InputManager"),
-        patch("windowcharmer.main.InputServices") as services_cls,
+        patch("windowcharmer.main.WakeFromSleepDetector"),
+        patch("windowcharmer.main.threading.Thread") as thread_cls,
+        patch("windowcharmer.main.threading.Event") as event_cls,
         patch("windowcharmer.main.SuperPassthroughTracker"),
         patch("windowcharmer.main.RebindScheduler") as scheduler_cls,
         patch("windowcharmer.main.DisplayPool"),
         patch("windowcharmer.main.load_keybindings", return_value={}),
     ):
-        services_cls.return_value.stop_all.side_effect = lambda: order.append("services")
+        event_cls.return_value.set.side_effect = lambda: order.append("stop_event")
+        thread_cls.return_value.join.side_effect = lambda timeout: order.append("sleep_join")
+        thread_cls.return_value.is_alive.return_value = False
         scheduler_cls.return_value.shutdown.side_effect = lambda: order.append("scheduler")
         mapper_cls.return_value.cleanup.side_effect = lambda: order.append("mapper")
 
         app = WindowCharmerApp()
         app.run_daemon()
 
-    assert order == ["services", "scheduler", "mapper"]
+    assert order == ["stop_event", "sleep_join", "scheduler", "mapper"]
+
+
+def test_run_daemon_warns_when_sleep_thread_does_not_exit() -> None:
+    """If join() returns and the thread is still alive, log a warning so the
+    operator knows the daemon is leaving a hung thread behind on shutdown.
+    """
+    with (
+        patch("windowcharmer.main.WindowManager"),
+        patch("windowcharmer.main.KeyboardMapper"),
+        patch("windowcharmer.main.InputManager"),
+        patch("windowcharmer.main.WakeFromSleepDetector"),
+        patch("windowcharmer.main.threading.Thread") as thread_cls,
+        patch("windowcharmer.main.SuperPassthroughTracker"),
+        patch("windowcharmer.main.RebindScheduler"),
+        patch("windowcharmer.main.DisplayPool"),
+        patch("windowcharmer.main.load_keybindings", return_value={}),
+        patch("windowcharmer.main.logger") as log,
+    ):
+        thread_cls.return_value.is_alive.return_value = True
+
+        app = WindowCharmerApp()
+        app.run_daemon()
+
+    assert any(
+        "did not exit" in (call.args[0] if call.args else "")
+        for call in log.warning.call_args_list
+    ), "expected a warning about the sleep monitor not exiting"
+
+
+def test_run_daemon_can_be_called_twice() -> None:
+    """The Thread is rebuilt each run_daemon(), so a second call doesn't
+    raise RuntimeError on the already-started thread from the first call.
+    """
+    with (
+        patch("windowcharmer.main.WindowManager"),
+        patch("windowcharmer.main.KeyboardMapper"),
+        patch("windowcharmer.main.InputManager"),
+        patch("windowcharmer.main.WakeFromSleepDetector"),
+        patch("windowcharmer.main.threading.Thread") as thread_cls,
+        patch("windowcharmer.main.SuperPassthroughTracker"),
+        patch("windowcharmer.main.RebindScheduler"),
+        patch("windowcharmer.main.DisplayPool"),
+        patch("windowcharmer.main.load_keybindings", return_value={}),
+    ):
+        thread_cls.return_value.is_alive.return_value = False
+
+        app = WindowCharmerApp()
+        app.run_daemon()
+        app.run_daemon()
+
+    # Two run_daemon() calls → two Thread() constructions.
+    assert thread_cls.call_count == 2

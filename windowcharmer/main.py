@@ -3,6 +3,7 @@ import functools
 import logging
 import signal
 import sys
+import threading
 from collections.abc import Callable
 
 from Xlib import X
@@ -12,7 +13,7 @@ from . import __version__
 from .config.actions import TileAction
 from .config.keybindings import load_keybindings
 from .input.rebind_scheduler import RebindScheduler
-from .input.services import InputServices
+from .input.sleep_detector import WakeFromSleepDetector
 from .input.super_passthrough import SuperPassthroughTracker
 from .input.xi2_manager import InputManager, InputManagerError
 from .tiling.manager import WindowManager
@@ -45,7 +46,11 @@ class WindowCharmerApp:
             self.mapper.simulate_super_press,
         )
 
-        self.input_services = InputServices(on_rebind_callback=self.rebind_scheduler.schedule)
+        # Sleep monitor lifecycle is owned by run_daemon() — it constructs the
+        # Thread there (not here) so a second run_daemon() call rebuilds it
+        # rather than raising RuntimeError on the already-started thread.
+        self._sleep_stop_event = threading.Event()
+        self._sleep_thread: threading.Thread | None = None
 
         self.input_manager = InputManager(
             self.input_dpy,
@@ -90,7 +95,17 @@ class WindowCharmerApp:
     def run_daemon(self) -> None:
         logger.info("Starting WindowCharmer Daemon...")
         self.mapper.apply_super_hyper_swap()
-        self.input_services.start_all()
+
+        self._sleep_stop_event.clear()
+        self._sleep_thread = threading.Thread(
+            target=WakeFromSleepDetector(
+                callback=self.rebind_scheduler.schedule,
+                stop_event=self._sleep_stop_event,
+            ).start,
+            daemon=True,
+            name="sleep-monitor",
+        )
+        self._sleep_thread.start()
 
         try:
             logger.info("Daemon started. Press Ctrl+C to exit.")
@@ -98,12 +113,17 @@ class WindowCharmerApp:
         except KeyboardInterrupt:
             pass
         finally:
-            # Stop background services first so no new debounce timers can be
-            # scheduled, then drain any in-flight one. Draining guarantees a
+            # Stop the sleep monitor first so no new debounce timers can be
+            # scheduled, then drain any in-flight one. set() must precede
+            # join() — otherwise join blocks for the full 2s timeout because
+            # the detector never sees the stop signal. Draining guarantees a
             # pending rebind completes before mapper.cleanup() restores the
             # canonical mapping — otherwise a late-firing rebind would re-swap
             # after cleanup.
-            self.input_services.stop_all()
+            self._sleep_stop_event.set()
+            self._sleep_thread.join(timeout=2.0)
+            if self._sleep_thread.is_alive():
+                logger.warning("Sleep monitor thread did not exit within timeout")
             self.rebind_scheduler.shutdown()
             self.mapper.cleanup()
             DisplayPool.close_all()
