@@ -408,10 +408,169 @@ def test_apply_tile_action_sets_max_flags_for_max_action(wm: WindowManager) -> N
     wm.props.set_max_flags.assert_called_once_with(win, 1, 1)
 
 
-def test_apply_tile_action_sets_max_flags_for_restore_action(wm: WindowManager) -> None:
-    """RESTORE clears both max flags."""
+def test_apply_tile_action_restore_routes_to_restore_window(wm: WindowManager) -> None:
+    """RESTORE goes through _restore_window (spawn-geometry path), not the
+    flag-only branch — clearing max flags is now _restore_window's job."""
     from windowcharmer.config.actions import TileAction
 
     win = MagicMock()
-    wm._apply_tile_action(TileAction.RESTORE, win)
+    with patch.object(wm, "_restore_window") as restore:
+        wm._apply_tile_action(TileAction.RESTORE, win)
+    restore.assert_called_once_with(win)
+    wm.props.set_max_flags.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Spawn-geometry tracking
+# ---------------------------------------------------------------------------
+
+
+def _stub_window(wid: int, x: int, y: int, w: int, h: int) -> MagicMock:
+    """A fake window whose get_geometry/translate_coords return the given rect.
+
+    translate_coords returns negative coords (X11 inversion); zones.py and
+    _track_windows both apply abs() to recover screen position.
+    """
+    win = MagicMock()
+    win.id = wid
+    geom = MagicMock(width=w, height=h, root=MagicMock())
+    win.get_geometry.return_value = geom
+    coords = MagicMock(x=-x, y=-y)
+    win.translate_coords.return_value = coords
+    return win
+
+
+def test_track_windows_snapshots_new_window(wm: WindowManager) -> None:
+    win = _stub_window(0x42, 100, 200, 800, 600)
+    wm.props.list_windows.return_value = [win]
+
+    wm._track_windows()
+
+    assert wm._spawn_geom == {0x42: (100, 200, 800, 600)}
+
+
+def test_track_windows_does_not_overwrite_existing_snapshot(wm: WindowManager) -> None:
+    """Once captured, the snapshot stays at first-seen geometry — even if the
+    window has since been resized (manually or by us). v2 will relax this
+    when the window is in a non-tile state; v1 keeps it simple."""
+    win = _stub_window(0x42, 999, 999, 999, 999)
+    wm.props.list_windows.return_value = [win]
+    wm._spawn_geom[0x42] = (100, 200, 800, 600)  # pre-existing snapshot
+
+    wm._track_windows()
+
+    assert wm._spawn_geom == {0x42: (100, 200, 800, 600)}
+
+
+def test_track_windows_prunes_dead_windows(wm: WindowManager) -> None:
+    """Vanished window IDs must be dropped so reused IDs don't inherit old snapshots."""
+    wm._spawn_geom = {0x42: (1, 2, 3, 4), 0x99: (5, 6, 7, 8)}
+    wm.props.list_windows.return_value = [_stub_window(0x42, 1, 2, 3, 4)]
+
+    wm._track_windows()
+
+    assert wm._spawn_geom == {0x42: (1, 2, 3, 4)}
+
+
+def test_track_windows_skips_windows_that_vanish_mid_query(wm: WindowManager) -> None:
+    """A window that BadWindows from get_geometry is silently skipped."""
+    from Xlib.error import BadWindow
+
+    err = BadWindow.__new__(BadWindow)
+    err._data = {"resource_id": 0, "sequence_number": 0, "major_opcode": 0, "minor_opcode": 0}
+
+    win = MagicMock()
+    win.id = 0x42
+    win.get_geometry.side_effect = err
+    wm.props.list_windows.return_value = [win]
+
+    wm._track_windows()  # must not raise
+
+    assert wm._spawn_geom == {}
+
+
+def test_restore_window_no_snapshot_is_noop(wm: WindowManager) -> None:
+    win = MagicMock()
+    win.id = 0x42
+    wm._spawn_geom = {}
+
+    wm._restore_window(win)
+
+    win.configure.assert_not_called()
+    wm.props.set_max_flags.assert_not_called()
+    wm.props.set_fullscreen_flag.assert_not_called()
+
+
+def test_restore_window_applies_snapshot_geometry(wm: WindowManager) -> None:
+    win = MagicMock()
+    win.id = 0x42
+    wm._spawn_geom = {0x42: (100, 200, 800, 600)}
+    wm.props.is_window_maximized_vertically.return_value = False
+    wm.props.is_window_maximized_horizontally.return_value = False
+    wm.props.is_window_fullscreen.return_value = False
+
+    wm._restore_window(win)
+
+    win.configure.assert_called_once()
+    kwargs = win.configure.call_args.kwargs
+    assert kwargs["x"] == 100
+    assert kwargs["y"] == 200
+    assert kwargs["width"] == 800
+    assert kwargs["height"] == 600
+
+
+def test_restore_window_clears_max_flags_when_window_was_maximized(wm: WindowManager) -> None:
+    """If the user manually maximized via the WM, RESTORE must clear those
+    flags before configuring — WMs reject configure() while max is set."""
+    win = MagicMock()
+    win.id = 0x42
+    wm._spawn_geom = {0x42: (100, 200, 800, 600)}
+    wm.props.is_window_maximized_vertically.return_value = True
+    wm.props.is_window_maximized_horizontally.return_value = False
+    wm.props.is_window_fullscreen.return_value = False
+
+    wm._restore_window(win)
+
     wm.props.set_max_flags.assert_called_once_with(win, 0, 0)
+    win.configure.assert_called_once()
+
+
+def test_restore_window_clears_fullscreen_flag_when_set(wm: WindowManager) -> None:
+    win = MagicMock()
+    win.id = 0x42
+    wm._spawn_geom = {0x42: (100, 200, 800, 600)}
+    wm.props.is_window_maximized_vertically.return_value = False
+    wm.props.is_window_maximized_horizontally.return_value = False
+    wm.props.is_window_fullscreen.return_value = True
+
+    wm._restore_window(win)
+
+    wm.props.set_fullscreen_flag.assert_called_once_with(win, on=False)
+
+
+def test_restore_after_tile_returns_to_pre_tile_geometry(wm: WindowManager) -> None:
+    """End-to-end: open window at (100,200,800,600), tile LEFT, RESTORE.
+    The window must end up back at the original geometry."""
+    from windowcharmer.config.actions import TileAction
+
+    win = _stub_window(0x42, 100, 200, 800, 600)
+    wm.props.list_windows.return_value = [win]
+    wm.props.get_active_window.return_value = win
+    wm.props.is_window_maximized_vertically.return_value = False
+    wm.props.is_window_maximized_horizontally.return_value = False
+    wm.props.is_window_fullscreen.return_value = False
+    wm.props.get_workarea.return_value = (0, 40, 1920, 1000)
+    wm.props.get_gtk_frame_extents.return_value = None
+    wm.props.get_net_frame_extents.return_value = None
+
+    # First action: LEFT tile. Snapshot should capture (100, 200, 800, 600).
+    wm.execute_action(TileAction.LEFT)
+    assert wm._spawn_geom[0x42] == (100, 200, 800, 600)
+
+    # Second action: RESTORE. Window.configure should land on snapshot values.
+    win.configure.reset_mock()
+    wm.execute_action(TileAction.RESTORE)
+
+    win.configure.assert_called()
+    kwargs = win.configure.call_args.kwargs
+    assert (kwargs["x"], kwargs["y"], kwargs["width"], kwargs["height"]) == (100, 200, 800, 600)

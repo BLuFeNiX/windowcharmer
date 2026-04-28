@@ -82,9 +82,10 @@ _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
     TileAction.TOP_CENTER:    _ZoneSpec(lambda d: (d.x_center, d.y_top,    d.w_center, d.h_half), needs_center=True),
     TileAction.BOTTOM_CENTER: _ZoneSpec(lambda d: (d.x_center, d.y_bottom, d.w_center, d.h_half), needs_center=True),
     TileAction.MAX:           _ZoneSpec(None, 1, 1),
-    TileAction.RESTORE:       _ZoneSpec(None, 0, 0),
 }
 # fmt: on
+# RESTORE has no _TILE_SPEC entry — it's a special case in _apply_tile_action
+# that returns a window to its captured spawn geometry.
 
 
 class WindowManager:
@@ -98,6 +99,11 @@ class WindowManager:
         self.config: Config = Config(wa_w=0)
         self.dim: ScreenDimensions | None = None
         self.animator: CinnamonAnimator = CinnamonAnimator(disabled=no_animate)
+
+        # win.id → (x, y, w, h) at first sight. RESTORE returns the window
+        # there. Refreshed on every action by _track_windows: new ids get
+        # snapshotted, vanished ids get pruned.
+        self._spawn_geom: dict[int, tuple[int, int, int, int]] = {}
 
     def _update_state(self) -> None:
         """Refresh screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
@@ -121,6 +127,52 @@ class WindowManager:
             wa_h,
             self.config.center_width,
         )
+
+    def _track_windows(self) -> None:
+        """Refresh _spawn_geom: snapshot newly-seen windows, drop vanished ones.
+
+        Called at the top of every action. The first time we observe a window,
+        we record its current X11 client rect; subsequent observations are
+        ignored so the snapshot stays at "first-seen" geometry. Windows missing
+        from _NET_CLIENT_LIST are pruned so reused window IDs can't collide
+        with stale snapshots.
+        """
+        live = self.props.list_windows()
+        live_ids = {win.id for win in live}
+        self._spawn_geom = {wid: g for wid, g in self._spawn_geom.items() if wid in live_ids}
+        for win in live:
+            if win.id in self._spawn_geom:
+                continue
+            try:
+                geom = win.get_geometry()
+                coords = win.translate_coords(geom.root, 0, 0)
+            except (BadWindow, BadDrawable):
+                continue
+            if not coords:
+                continue
+            self._spawn_geom[win.id] = (abs(coords.x), abs(coords.y), geom.width, geom.height)
+
+    def _restore_window(self, window: Window) -> None:
+        """Return a window to its captured spawn geometry, or no-op if untracked."""
+        snap = self._spawn_geom.get(window.id)
+        if snap is None:
+            logger.debug("RESTORE: no spawn geometry for window 0x%x", window.id)
+            return
+
+        # WMs ignore configure() while max/fullscreen are set — clear those
+        # first so the geometry actually lands. The pre-checks avoid an
+        # unnecessary _NET_WM_STATE ClientMessage when the flag is already
+        # absent (Muffin reacts to writes; see project memory).
+        if self.props.is_window_maximized_vertically(window) or self.props.is_window_maximized_horizontally(window):
+            self.props.set_max_flags(window, 0, 0)
+        if self.props.is_window_fullscreen(window):
+            self.props.set_fullscreen_flag(window, on=False)
+
+        x, y, w, h = snap
+        # Skip move_and_resize's frame-extents math: the snapshot IS the X11
+        # client rect (that's what get_geometry returned), so adjusting again
+        # would over-correct by 2x the extents.
+        window.configure(value_mask=X.CWX | X.CWY | X.CWWidth | X.CWHeight, x=x, y=y, width=w, height=h)
 
     def _resolve_tile_cycle(self, action: TileAction, win: Window) -> TileAction:
         """Cycle LEFT↔LEFT_CENTER and RIGHT↔RIGHT_CENTER based on the window's current zone."""
@@ -154,6 +206,9 @@ class WindowManager:
         try:
             # Read state before grabbing the server to minimise the held window.
             self._update_state()
+            # Snapshot any newly-seen windows so RESTORE can return them later.
+            # Runs before any tile mutation so the captured geom is pre-tile.
+            self._track_windows()
 
             if action in (TileAction.BIGGER, TileAction.SMALLER):
                 step = 1 if action == TileAction.BIGGER else -1
@@ -237,13 +292,17 @@ class WindowManager:
 
     def _apply_tile_action(self, action: TileAction, win: Window) -> None:
         """Dispatch a tile action using the _TILE_SPEC table."""
+        if action == TileAction.RESTORE:
+            self._restore_window(win)
+            return
+
         spec = _TILE_SPEC.get(action)
         if spec is None:
             logger.warning("Unhandled tile action: %s", action)
             return
 
         if spec.geom is None:
-            # Flag-only action (MAX, RESTORE).
+            # Flag-only action (MAX).
             self.props.set_max_flags(win, spec.v_max, spec.h_max)
             return
 
