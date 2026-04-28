@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "windowcharmer"
-version = "2026.4.1"
+version = "2026.4.2"
 dependencies = [
   "python-xlib>=0.33,<1.0",
 ]
