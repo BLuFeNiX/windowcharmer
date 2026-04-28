@@ -6,25 +6,30 @@ WindowCharmer is a three-column window tiler for ultra-wide monitors, designed f
 
 ## Installation
 
-```sh
-git clone git@github.com:BLuFeNiX/windowcharmer.git
-cd windowcharmer
-```
+### Direct from GitHub (recommended)
 
 **With [uv](https://docs.astral.sh/uv/getting-started/installation/)**:
 
 ```sh
-uv tool install .
+uv tool install git+https://github.com/BLuFeNiX/windowcharmer.git
 ```
-
-This installs the `windowcharmer` binary to `~/.local/bin/`. Ensure that directory is on your `PATH`.
 
 **With pip:**
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+pip install git+https://github.com/BLuFeNiX/windowcharmer.git
+```
+
+Either installs the `windowcharmer` binary to `~/.local/bin/`. Ensure that directory is on your `PATH`. Pin to a specific tag or branch by appending `@<ref>` (e.g. `…@v2026.4.2`).
+
+To upgrade later: `uv tool upgrade windowcharmer` (uv) or re-run the pip command (pip).
+
+### From a local clone
+
+```sh
+git clone git@github.com:BLuFeNiX/windowcharmer.git
+cd windowcharmer
+uv tool install .                  # or: pip install -e .
 ```
 
 ### Cinnamon animations (optional)
@@ -33,7 +38,8 @@ To get smooth compositor-driven animations when tiling on Cinnamon, install the 
 
 ```sh
 sudo apt install libgirepository-2.0-dev libcairo2-dev python3-dev   # build headers for PyGObject
-uv tool install '.[cinnamon]'                                         # or pip install -e '.[cinnamon]'
+uv tool install 'windowcharmer[cinnamon] @ git+https://github.com/BLuFeNiX/windowcharmer.git'
+# or: pip install 'windowcharmer[cinnamon] @ git+https://github.com/BLuFeNiX/windowcharmer.git'
 ```
 
 ## Usage
