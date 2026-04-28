@@ -5,7 +5,7 @@ input services, and super-tap tracker. Tests below exercise routing and
 lifecycle with all collaborators mocked.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from windowcharmer.config.actions import TileAction
 from windowcharmer.main import WindowCharmerApp
@@ -19,6 +19,7 @@ def _make_app() -> WindowCharmerApp:
         patch("windowcharmer.main.InputManager"),
         patch("windowcharmer.main.InputServices"),
         patch("windowcharmer.main.SuperPassthroughTracker"),
+        patch("windowcharmer.main.RebindScheduler"),
         patch("windowcharmer.main.DisplayPool"),
         patch("windowcharmer.main.load_keybindings", return_value={}),
     ):
@@ -55,17 +56,46 @@ def test_on_keymap_change_applies_swap_and_refreshes_tracker_keycode() -> None:
     app.passthrough_tracker.update_keycode.assert_called_once_with(999)
 
 
-def test_schedule_rebind_cancels_previous_timer() -> None:
-    """Two rebinds in quick succession must collapse to a single fire."""
-    timer1 = MagicMock()
-    timer2 = MagicMock()
-    with patch("windowcharmer.main.threading.Timer", side_effect=[timer1, timer2]):
-        app = _make_app()
-        app._schedule_rebind()
-        app._schedule_rebind()
+def test_hotplug_and_sleep_route_through_rebind_scheduler() -> None:
+    """Both hot-plug and sleep wake-up trigger the same debounced rebind path."""
+    with (
+        patch("windowcharmer.main.WindowManager"),
+        patch("windowcharmer.main.KeyboardMapper"),
+        patch("windowcharmer.main.InputManager") as input_manager_cls,
+        patch("windowcharmer.main.InputServices") as input_services_cls,
+        patch("windowcharmer.main.SuperPassthroughTracker"),
+        patch("windowcharmer.main.RebindScheduler") as scheduler_cls,
+        patch("windowcharmer.main.DisplayPool"),
+        patch("windowcharmer.main.load_keybindings", return_value={}),
+    ):
+        app = WindowCharmerApp()
 
-    timer1.cancel.assert_called_once()
-    timer1.start.assert_called_once()
-    timer2.start.assert_called_once()
-    timer2.cancel.assert_not_called()
-    assert app.debounce_timer is timer2
+    schedule_fn = scheduler_cls.return_value.schedule
+    assert input_manager_cls.call_args.kwargs["on_keyboard_hotplug"] is schedule_fn
+    assert input_services_cls.call_args.kwargs["on_rebind_callback"] is schedule_fn
+    assert app.rebind_scheduler is scheduler_cls.return_value
+
+
+def test_run_daemon_drains_scheduler_before_mapper_cleanup() -> None:
+    """Shutdown order matters: scheduler.shutdown must run before mapper.cleanup
+    so a late-firing rebind can't re-swap the keymap after canonical restore.
+    """
+    order: list[str] = []
+    with (
+        patch("windowcharmer.main.WindowManager"),
+        patch("windowcharmer.main.KeyboardMapper") as mapper_cls,
+        patch("windowcharmer.main.InputManager"),
+        patch("windowcharmer.main.InputServices") as services_cls,
+        patch("windowcharmer.main.SuperPassthroughTracker"),
+        patch("windowcharmer.main.RebindScheduler") as scheduler_cls,
+        patch("windowcharmer.main.DisplayPool"),
+        patch("windowcharmer.main.load_keybindings", return_value={}),
+    ):
+        services_cls.return_value.stop_all.side_effect = lambda: order.append("services")
+        scheduler_cls.return_value.shutdown.side_effect = lambda: order.append("scheduler")
+        mapper_cls.return_value.cleanup.side_effect = lambda: order.append("mapper")
+
+        app = WindowCharmerApp()
+        app.run_daemon()
+
+    assert order == ["services", "scheduler", "mapper"]

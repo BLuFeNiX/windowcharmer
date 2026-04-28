@@ -3,7 +3,6 @@ import functools
 import logging
 import signal
 import sys
-import threading
 from collections.abc import Callable
 
 from Xlib import X
@@ -12,6 +11,7 @@ from Xlib.display import Display
 from . import __version__
 from .config.actions import TileAction
 from .config.keybindings import load_keybindings
+from .input.rebind_scheduler import RebindScheduler
 from .input.services import InputServices
 from .input.super_passthrough import SuperPassthroughTracker
 from .input.xi2_manager import InputManager, InputManagerError
@@ -28,11 +28,14 @@ class WindowCharmerApp:
     def __init__(self, no_animate: bool = False) -> None:
         self.wm = WindowManager(no_animate=no_animate)
         self.key_bindings = load_keybindings()
-        self.timer_lock = threading.Lock()
-        self.debounce_timer: threading.Timer | None = None
 
         self.mapper = KeyboardMapper()
         self.input_dpy: Display = DisplayPool.get_display("input")
+
+        self.rebind_scheduler = RebindScheduler(
+            callback=self.mapper.apply_super_hyper_swap,
+            delay_seconds=_REBIND_DEBOUNCE_SECONDS,
+        )
 
         # Tracker watches the *physical* Super key — stable across the swap.
         # Where the Super_L keysym lives moves when we swap; the physical key
@@ -42,14 +45,14 @@ class WindowCharmerApp:
             self.mapper.simulate_super_press,
         )
 
-        self.input_services = InputServices(on_rebind_callback=self._schedule_rebind)
+        self.input_services = InputServices(on_rebind_callback=self.rebind_scheduler.schedule)
 
         self.input_manager = InputManager(
             self.input_dpy,
             key_actions=self._setup_key_bindings(),
             passthrough_tracker=self.passthrough_tracker,
             on_keymap_change=self._on_keymap_change,
-            on_keyboard_hotplug=self._schedule_rebind,
+            on_keyboard_hotplug=self.rebind_scheduler.schedule,
             modifier=X.Mod4Mask,
         )
 
@@ -68,15 +71,6 @@ class WindowCharmerApp:
 
     def _setup_key_bindings(self) -> dict[str, Callable[[], None]]:
         return {key: functools.partial(self.do_action, action) for key, action in self.key_bindings.items()}
-
-    def _schedule_rebind(self) -> None:
-        """Debounce a keymap rebind. Called from the sleep monitor thread and
-        from the InputManager's HierarchyChanged handler (main thread)."""
-        with self.timer_lock:
-            if self.debounce_timer:
-                self.debounce_timer.cancel()
-            self.debounce_timer = threading.Timer(_REBIND_DEBOUNCE_SECONDS, self.mapper.apply_super_hyper_swap)
-            self.debounce_timer.start()
 
     def _on_keymap_change(self) -> None:
         """Run on every MappingNotify(Keyboard) the InputManager sees.
@@ -105,18 +99,12 @@ class WindowCharmerApp:
             pass
         finally:
             # Stop background services first so no new debounce timers can be
-            # scheduled, then cancel + join the in-flight one. Joining
-            # guarantees a pending rebind completes before mapper.cleanup()
-            # restores the canonical mapping — otherwise a late-firing rebind
-            # would re-swap after cleanup.
+            # scheduled, then drain any in-flight one. Draining guarantees a
+            # pending rebind completes before mapper.cleanup() restores the
+            # canonical mapping — otherwise a late-firing rebind would re-swap
+            # after cleanup.
             self.input_services.stop_all()
-            with self.timer_lock:
-                timer = self.debounce_timer
-                self.debounce_timer = None
-            if timer:
-                timer.cancel()
-                timer.join()
-                logger.debug("Joined debounce timer at shutdown")
+            self.rebind_scheduler.shutdown()
             self.mapper.cleanup()
             DisplayPool.close_all()
 
