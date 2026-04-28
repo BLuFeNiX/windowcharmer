@@ -36,8 +36,23 @@ def determine_tile_zone(
     if not coords:
         return "unknown"
 
-    x, y = abs(coords.x), abs(coords.y)
-    w, h = geom.width, geom.height
+    return classify_zone(abs(coords.x), abs(coords.y), geom.width, geom.height, dim, is_maximized_vertically)
+
+
+def classify_zone(
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    dim: ScreenDimensions,
+    is_maximized_vertically: bool,
+) -> str:
+    """Classify an (x, y, w, h) rect into a zone string. Pure function — no X calls.
+
+    Used by determine_tile_zone after fetching geometry, and by callers that
+    already have geometry in hand (e.g. _track_windows reuses the rect it
+    just snapshotted to avoid a second get_geometry round-trip).
+    """
 
     def within(val: int, target: int) -> bool:
         return target - _ZONE_DEVIATION <= val <= target + _ZONE_DEVIATION

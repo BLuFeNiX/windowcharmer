@@ -13,7 +13,7 @@ from ..config.dimensions import ScreenDimensions
 from ..config.settings import Config
 from ..x11.display_pool import DisplayPool
 from ..x11.ewmh_client import ALL_DESKTOPS, EwmhClient
-from .zones import determine_tile_zone
+from .zones import classify_zone, determine_tile_zone
 
 logger = logging.getLogger(__name__)
 
@@ -129,13 +129,15 @@ class WindowManager:
         )
 
     def _track_windows(self) -> None:
-        """Refresh _spawn_geom: snapshot newly-seen windows, drop vanished ones.
+        """Refresh _spawn_geom: snapshot new windows, drop vanished ones,
+        and refresh existing snapshots when the window is observed in a
+        non-tile (natural) state.
 
-        Called at the top of every action. The first time we observe a window,
-        we record its current X11 client rect; subsequent observations are
-        ignored so the snapshot stays at "first-seen" geometry. Windows missing
-        from _NET_CLIENT_LIST are pruned so reused window IDs can't collide
-        with stale snapshots.
+        Called at the top of every action. The refresh-on-natural rule lets
+        manual drag-resize update the snapshot — a window the user has moved
+        to a non-tile geometry is definitionally in their preferred state, so
+        RESTORE should return there. Tiled windows are preserved: their
+        current geometry is our doing, not the user's.
         """
         live = self.props.list_windows()
         live_ids = {win.id for win in live}
@@ -144,9 +146,8 @@ class WindowManager:
         pruned = before - set(self._spawn_geom)
         if pruned:
             logger.debug("Pruned %d dead window snapshot(s): %s", len(pruned), [hex(p) for p in pruned])
+
         for win in live:
-            if win.id in self._spawn_geom:
-                continue
             try:
                 geom = win.get_geometry()
                 coords = win.translate_coords(geom.root, 0, 0)
@@ -154,12 +155,30 @@ class WindowManager:
                 continue
             if not coords:
                 continue
-            self._spawn_geom[win.id] = (abs(coords.x), abs(coords.y), geom.width, geom.height)
-            logger.debug(
-                "Snapshotted 0x%x at (x=%d, y=%d, w=%d, h=%d)",
-                win.id,
-                *self._spawn_geom[win.id],
-            )
+            cur = (abs(coords.x), abs(coords.y), geom.width, geom.height)
+
+            existing = self._spawn_geom.get(win.id)
+            if existing is None:
+                self._spawn_geom[win.id] = cur
+                logger.debug("Snapshotted 0x%x at (x=%d, y=%d, w=%d, h=%d)", win.id, *cur)
+                continue
+
+            if cur == existing:
+                continue
+
+            # Geometry differs from the snapshot. Refresh only when the
+            # window is in a non-tile state — that means the user (not us)
+            # put it there, so it's the new "preferred" geometry.
+            if not self.dim:
+                continue
+            try:
+                is_max_v = self.props.is_window_maximized_vertically(win)
+            except (BadWindow, BadDrawable):
+                continue
+            zone = classify_zone(*cur, self.dim, is_max_v)
+            if "unknown" in zone:
+                self._spawn_geom[win.id] = cur
+                logger.debug("Refreshed 0x%x snapshot to (x=%d, y=%d, w=%d, h=%d)", win.id, *cur)
 
     def _restore_window(self, window: Window) -> None:
         """Return a window to its captured spawn geometry, or no-op if untracked."""

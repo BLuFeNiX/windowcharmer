@@ -449,16 +449,64 @@ def test_track_windows_snapshots_new_window(wm: WindowManager) -> None:
     assert wm._spawn_geom == {0x42: (100, 200, 800, 600)}
 
 
-def test_track_windows_does_not_overwrite_existing_snapshot(wm: WindowManager) -> None:
-    """Once captured, the snapshot stays at first-seen geometry — even if the
-    window has since been resized (manually or by us). v2 will relax this
-    when the window is in a non-tile state; v1 keeps it simple."""
-    win = _stub_window(0x42, 999, 999, 999, 999)
+def test_track_windows_refreshes_snapshot_when_window_in_natural_state(wm: WindowManager) -> None:
+    """Manual drag-resize: the user moves a tracked window to a geometry that
+    doesn't match any tile zone. Refresh the snapshot so RESTORE returns there."""
+    from windowcharmer.config.dimensions import ScreenDimensions
+
+    wm.dim = ScreenDimensions(0, 40, 1920, 1000, 768)
+    wm.props.is_window_maximized_vertically.return_value = False
+    win = _stub_window(0x42, 300, 300, 400, 400)  # nowhere near any tile zone
     wm.props.list_windows.return_value = [win]
-    wm._spawn_geom[0x42] = (100, 200, 800, 600)  # pre-existing snapshot
+    wm._spawn_geom[0x42] = (100, 200, 800, 600)
 
     wm._track_windows()
 
+    assert wm._spawn_geom == {0x42: (300, 300, 400, 400)}
+
+
+def test_track_windows_preserves_snapshot_when_window_in_tile_zone(wm: WindowManager) -> None:
+    """A window observed at tile-zone geometry is in a state we caused — keep
+    the original snapshot so RESTORE goes back to the pre-tile state."""
+    from windowcharmer.config.dimensions import ScreenDimensions
+
+    wm.dim = ScreenDimensions(0, 40, 1920, 1000, 768)
+    wm.props.is_window_maximized_vertically.return_value = False
+    # LEFT zone: x_left, y_top, w_side, h_full.
+    win = _stub_window(0x42, wm.dim.x_left, wm.dim.y_top, wm.dim.w_side, wm.dim.h_full)
+    wm.props.list_windows.return_value = [win]
+    wm._spawn_geom[0x42] = (100, 200, 800, 600)
+
+    wm._track_windows()
+
+    assert wm._spawn_geom == {0x42: (100, 200, 800, 600)}
+
+
+def test_track_windows_skips_natural_state_check_when_dim_unset(wm: WindowManager) -> None:
+    """Without dim, classify_zone has no reference frame — preserve snapshot."""
+    wm.dim = None
+    win = _stub_window(0x42, 300, 300, 400, 400)
+    wm.props.list_windows.return_value = [win]
+    wm._spawn_geom[0x42] = (100, 200, 800, 600)
+
+    wm._track_windows()
+
+    assert wm._spawn_geom == {0x42: (100, 200, 800, 600)}
+
+
+def test_track_windows_skips_refresh_when_geometry_unchanged(wm: WindowManager) -> None:
+    """No-op fast path: if cur == existing, don't bother classifying."""
+    from windowcharmer.config.dimensions import ScreenDimensions
+
+    wm.dim = ScreenDimensions(0, 40, 1920, 1000, 768)
+    win = _stub_window(0x42, 100, 200, 800, 600)
+    wm.props.list_windows.return_value = [win]
+    wm._spawn_geom[0x42] = (100, 200, 800, 600)
+
+    wm._track_windows()
+
+    # is_window_maximized_vertically should not be queried — fast path bails first.
+    wm.props.is_window_maximized_vertically.assert_not_called()
     assert wm._spawn_geom == {0x42: (100, 200, 800, 600)}
 
 
