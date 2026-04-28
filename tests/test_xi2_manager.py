@@ -306,6 +306,40 @@ def test_start_raises_input_manager_error_when_xi2_missing() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_start_selects_hierarchy_on_all_devices_not_all_master_devices() -> None:
+    """Regression: HierarchyChanged must be selected on AllDevices, not
+    AllMasterDevices. The X server returns BadValue for HierarchyChangedMask
+    on AllMasterDevices — and python-xlib's randr.py registers BadRRModeError
+    at the same absolute error code 2 as core BadValue, mis-classifying the
+    BadValue as a malformed BadRRModeError that crashes the parser. Splitting
+    the select into per-deviceid entries avoids the trigger entirely.
+    """
+    actions: dict[str, MagicMock] = {}  # no actions → grab loop is a no-op
+    mgr, dpy, _, _, _ = _make_manager(actions)
+
+    # Make _run_loop exit immediately so start() returns.
+    dpy.pending_events.return_value = 0
+    mgr._stopped = True
+
+    with patch("windowcharmer.input.xi2_manager.select.select", return_value=([], [], [])):
+        try:
+            mgr.start()
+        except Exception:
+            pass  # we don't care about loop exit details
+
+    root = dpy.screen.return_value.root
+    root.xinput_select_events.assert_called_once()
+    masks = root.xinput_select_events.call_args.args[0]
+    by_device = {entry[0]: entry[1] for entry in masks}
+
+    assert xinput.AllDevices in by_device, "HierarchyChanged must be selected on AllDevices"
+    assert by_device[xinput.AllDevices] & xinput.HierarchyChangedMask
+    assert xinput.AllMasterDevices in by_device, "Key events must be selected on AllMasterDevices"
+    assert by_device[xinput.AllMasterDevices] & xinput.KeyPressMask
+    # Crucially: HierarchyChangedMask must NOT be on the AllMasterDevices entry.
+    assert not (by_device[xinput.AllMasterDevices] & xinput.HierarchyChangedMask)
+
+
 def test_unknown_xi2_evtype_is_silently_ignored() -> None:
     mgr, _, tracker, _, on_hotplug = _make_manager()
     event = MagicMock()

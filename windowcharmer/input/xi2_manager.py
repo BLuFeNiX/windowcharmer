@@ -134,14 +134,25 @@ class InputManager:
 
         root = self.dpy.screen().root
         try:
+            # HierarchyChanged events are device-independent (a single event
+            # covers all hierarchy changes), and the X server enforces that
+            # the mask be selected on AllDevices, NOT AllMasterDevices —
+            # using AllMasterDevices triggers a BadValue. Key events go
+            # through master devices in the normal case, so they get the
+            # AllMasterDevices selection. Two entries, one call.
             root.xinput_select_events(
                 [
-                    (
-                        xinput.AllMasterDevices,
-                        xinput.KeyPressMask | xinput.KeyReleaseMask | xinput.HierarchyChangedMask,
-                    ),
+                    (xinput.AllMasterDevices, xinput.KeyPressMask | xinput.KeyReleaseMask),
+                    (xinput.AllDevices, xinput.HierarchyChangedMask),
                 ]
             )
+            # Force any async error from the select to surface NOW, inside
+            # this try block — otherwise it queues and explodes much later
+            # on the next reply-bearing request, and (because python-xlib's
+            # randr.py registers BadRRModeError at the same absolute error
+            # code 2 as core BadValue) it gets mis-classified as a
+            # BadRRModeError that fails to expose .sequence_number.
+            self.dpy.sync()
         except Exception as e:
             raise InputManagerError(f"XISelectEvents failed: {e}") from e
 
