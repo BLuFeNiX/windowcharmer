@@ -20,7 +20,7 @@
 ## BadAccess: another client already owns the grab
 
 WindowCharmer logs:
-> `KeyGrabber: BadAccess — another client may own a grab. Retrying in 1s...`
+> `InputManagerError: BadAccess during grab: ...`
 
 **Cause**: another program has grabbed the same `Super+<key>` combination.
 Common culprits: other tiling managers, Compiz, picom with key-binding plugins,
@@ -77,17 +77,22 @@ windowcharmer --fix-keymap
 
 ---
 
-## `KeyMonitor` / XRecord errors
+## XInput2 / passthrough errors
 
 If you see:
-> `KeyMonitor failed to start: RECORD extension not found.`
+> `InputManagerError: XInputExtension not present on this server`
 
-Your X server doesn't have the RECORD extension loaded. Super-key passthrough (the bare Super → application menu behavior) will not work, but all other tiling functions will work normally.
+Your X server doesn't have the XInput extension loaded. WindowCharmer requires XInput2 ≥ 2.0 for both key dispatch and the bare-Super passthrough.
 
-On Xorg: the RECORD extension is usually compiled in. Check with:
+On Xorg: XInput is usually compiled in. Check with:
 ```sh
-xdpyinfo | grep RECORD
+xdpyinfo | grep -i xinput
 ```
+
+If you see:
+> `XISelectEvents failed: ...`
+
+The X server rejected our event-mask selection. Most often this surfaces as a confusing `BadRRModeError` (a python-xlib quirk: its bundled `randr.py` registers `BadRRModeError` at the same numeric error code as core `BadValue`, so any `BadValue` on a system with RandR loaded is misreported as `BadRRMode`). The underlying error is almost always a malformed XISelectEvents call — open an issue with the full debug log if you hit this.
 
 ---
 

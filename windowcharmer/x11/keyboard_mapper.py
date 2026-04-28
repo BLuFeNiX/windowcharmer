@@ -204,7 +204,7 @@ class KeyboardMapper:
 
         Idempotent across self-triggered MappingNotify echoes — every
         change_keyboard_mapping call causes the X server to broadcast
-        MappingNotify, which the KeyGrabber routes back to this method.
+        MappingNotify, which the InputManager routes back to this method.
         The idempotency check has to survive seeing the layout we just wrote.
 
         Each call re-scans the live keymap, so a mid-session keymap change

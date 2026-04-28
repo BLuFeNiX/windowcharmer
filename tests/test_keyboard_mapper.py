@@ -176,7 +176,7 @@ def test_init_skips_backup_when_keysym_missing() -> None:
 
 def test_apply_swap_idempotent_across_self_triggered_mapping_notify() -> None:
     """Every change_keyboard_mapping broadcasts MappingNotify, which routes back
-    here via the KeyGrabber. The second call must detect the layout is already
+    here via the InputManager. The second call must detect the layout is already
     swapped and bail — otherwise we'd loop forever.
     """
     live = {_CANON_SUPER_KC: [_SUPER_L], _CANON_HYPER_KC: [_HYPER_L]}

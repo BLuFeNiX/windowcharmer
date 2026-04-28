@@ -167,7 +167,7 @@ class WindowManager:
             self.d.flush()
 
     def execute_action(self, action: TileAction) -> None:
-        """Entry point for a tiling action, called from the KeyGrabber event loop on the main thread."""
+        """Entry point for a tiling action, called from the InputManager event loop on the main thread."""
         try:
             # Read state before grabbing the server to minimise the held window.
             self._update_state()
