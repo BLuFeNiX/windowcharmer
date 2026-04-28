@@ -1,11 +1,9 @@
 import logging
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import NamedTuple
 
-from Xlib import X, protocol
-from Xlib.display import Display
+from Xlib import X
 from Xlib.error import BadDrawable, BadWindow, ConnectionClosedError, DisplayConnectionError
 from Xlib.xobject.drawable import Window
 
@@ -14,21 +12,14 @@ from ..config.actions import TileAction
 from ..config.dimensions import ScreenDimensions
 from ..config.settings import Config
 from ..x11.display_pool import DisplayPool
-from ..x11.utils import AtomCache, get_property_value
+from ..x11.ewmh_client import ALL_DESKTOPS, EwmhClient, FrameExtents
 from .zones import determine_tile_zone
 
 logger = logging.getLogger(__name__)
 
-# _NET_WM_DESKTOP sentinel for "show on all desktops" (sticky windows).
-_ALL_DESKTOPS = 0xFFFFFFFF
-
-
-@dataclass(frozen=True)
-class FrameExtents:
-    left: int
-    right: int
-    top: int
-    bottom: int
+# Re-exported for tests and any callers that imported FrameExtents from here
+# before the EwmhClient extraction.
+__all__ = ["FrameExtents", "WindowManager"]
 
 
 class _ZoneSpec(NamedTuple):
@@ -103,11 +94,8 @@ _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
 class WindowManager:
     def __init__(self, no_animate: bool = False) -> None:
         """Initializes the WindowManager with its own X11 display connection."""
-        self._warned_missing_desktop: bool = False
-        self.d: Display = DisplayPool.get_display("wm")
-        self.atom = AtomCache(self.d)
-
-        self.root: Window = self.d.screen().root
+        self.d = DisplayPool.get_display("wm")
+        self.props = EwmhClient(self.d)
 
         # Config starts unsized; _update_state populates wa_w from _NET_WORKAREA
         # on the first action.
@@ -117,15 +105,14 @@ class WindowManager:
 
     def _update_state(self) -> None:
         """Refresh screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
-        screen = self.d.screen()
-        active_desktop = self.get_active_desktop()
+        active_desktop = self.props.get_active_desktop()
 
-        workarea = get_property_value(self.root, self.atom.workarea)
+        workarea = self.props.get_workarea()
         if workarea:
-            wa_x, wa_y, wa_w, wa_h = workarea[0:4]
+            wa_x, wa_y, wa_w, wa_h = workarea
         else:
             wa_x, wa_y = 0, 0
-            wa_w, wa_h = screen.width_in_pixels, screen.height_in_pixels
+            wa_w, wa_h = self.props.get_screen_size()
 
         # Workarea must reach Config before reload so center_width is sized
         # against usable area, not raw screen width.
@@ -143,7 +130,7 @@ class WindowManager:
         """Cycle LEFT↔LEFT_CENTER and RIGHT↔RIGHT_CENTER based on the window's current zone."""
         if self.config.center_width == 0:
             return action
-        zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
+        zone = determine_tile_zone(win, self.dim, self.props.is_window_maximized_vertically(win))
         if action == TileAction.LEFT:
             if zone == "left":
                 return TileAction.LEFT_CENTER
@@ -182,7 +169,7 @@ class WindowManager:
                     self.resize_all_windows(step)
                 return
 
-            win = self.get_active_window()
+            win = self.props.get_active_window()
             if win is None:
                 return
             if action in (TileAction.LEFT, TileAction.RIGHT):
@@ -261,7 +248,7 @@ class WindowManager:
 
         if spec.geom is None:
             # Flag-only action (MAX, RESTORE).
-            self.set_max_flags(win, spec.v_max, spec.h_max)
+            self.props.set_max_flags(win, spec.v_max, spec.h_max)
             return
 
         if not self.dim:
@@ -273,8 +260,6 @@ class WindowManager:
         x, y, w, h = spec.geom(self.dim)
         self.move_and_resize(win, x, y, w, h)
 
-    # --- Helpers ---
-
     def move_and_resize(self, window: Window, x: int, y: int, width: int, height: int) -> None:
         """Fits a window into (x, y, width, height), accounting for GTK CSD and WM frames."""
         x, y, client_w, client_h = self._compute_client_geometry(window, x, y, width, height)
@@ -282,10 +267,10 @@ class WindowManager:
         # Maximized and fullscreen windows ignore configure() — the WM owns
         # their geometry. Clear those flags first or the configure will be
         # rejected (or briefly applied then snapped back, producing a flicker).
-        if self.is_window_maximized_vertically(window) or self.is_window_maximized_horizontally(window):
-            self.set_max_flags(window, 0, 0)
-        if self.is_window_fullscreen(window):
-            self.set_fullscreen_flag(window, on=False)
+        if self.props.is_window_maximized_vertically(window) or self.props.is_window_maximized_horizontally(window):
+            self.props.set_max_flags(window, 0, 0)
+        if self.props.is_window_fullscreen(window):
+            self.props.set_fullscreen_flag(window, on=False)
 
         window.configure(
             value_mask=X.CWX | X.CWY | X.CWWidth | X.CWHeight,
@@ -304,14 +289,14 @@ class WindowManager:
         out and grow the size to absorb them. WM-decorated windows have a frame
         outside the X11 client — shrink the size to leave room for the frame.
         """
-        gtk_fe = self.get_gtk_frame_extents(window)
+        gtk_fe = self.props.get_gtk_frame_extents(window)
         if gtk_fe:
             x -= gtk_fe.left
             y -= gtk_fe.top
             width += gtk_fe.left + gtk_fe.right
             height += gtk_fe.top + gtk_fe.bottom
 
-        net_fe = self.get_net_frame_extents(window)
+        net_fe = self.props.get_net_frame_extents(window)
         if net_fe:
             width -= net_fe.left + net_fe.right
             height -= net_fe.top + net_fe.bottom
@@ -319,83 +304,6 @@ class WindowManager:
         if width < 1 or height < 1:
             logger.debug("Frame-extents math underflow: requested %dx%d → clamped to 1x1", width, height)
         return x, y, max(1, width), max(1, height)
-
-    def set_max_flags(self, window: Window, v: int = 1, h: int = 1) -> None:
-        """Sets _NET_WM_STATE maximization flags."""
-        self.send_client_message(window, self.atom.wm_state, (v, self.atom.v_max, 0, 0, 0))
-        self.send_client_message(window, self.atom.wm_state, (h, self.atom.h_max, 0, 0, 0))
-
-    def set_fullscreen_flag(self, window: Window, on: bool) -> None:
-        """Set or clear _NET_WM_STATE_FULLSCREEN."""
-        action = 1 if on else 0
-        self.send_client_message(window, self.atom.wm_state, (action, self.atom.fullscreen, 0, 0, 0))
-
-    def send_client_message(self, window: Window, atom: int, data: tuple[int, int, int, int, int]) -> None:
-        """Send a _NET_WM_STATE client message to the root window."""
-        event = protocol.event.ClientMessage(window=window, client_type=atom, data=(32, list(data)))
-        mask = X.SubstructureRedirectMask | X.SubstructureNotifyMask
-        self.root.send_event(event, event_mask=mask)
-
-    def get_active_window(self) -> Window | None:
-        """Returns the currently focused window, or None."""
-        val = get_property_value(self.root, self.atom.active_window)
-        if val and val[0]:
-            return self.d.create_resource_object("window", val[0])
-        return None
-
-    def get_active_desktop(self) -> int:
-        """Returns the index of the current virtual desktop."""
-        val = get_property_value(self.root, self.atom.current_desktop)
-        if not val:
-            if not self._warned_missing_desktop:
-                logger.warning("_NET_CURRENT_DESKTOP not set — WM may not be EWMH-compliant; defaulting to desktop 0")
-                self._warned_missing_desktop = True
-            return 0
-        return val[0]
-
-    def get_gtk_frame_extents(self, window: Window) -> FrameExtents | None:
-        """Returns GTK CSD shadow extents if present."""
-        extents = get_property_value(window, self.atom.gtk_frame_extents)
-        if extents and len(extents) >= 4:
-            return FrameExtents(extents[0], extents[1], extents[2], extents[3])
-        return None
-
-    def get_net_frame_extents(self, window: Window) -> FrameExtents | None:
-        """Returns WM-decorated frame extents (titlebar + borders) if present."""
-        extents = get_property_value(window, self.atom.frame_extents)
-        if extents and len(extents) >= 4:
-            return FrameExtents(extents[0], extents[1], extents[2], extents[3])
-        return None
-
-    def _is_maximized(self, window: Window, flag: int) -> bool:
-        state = get_property_value(window, self.atom.wm_state)
-        return bool(state and flag in state)
-
-    def is_window_maximized_vertically(self, window: Window) -> bool:
-        """Returns True if _NET_WM_STATE_MAXIMIZED_VERT is set."""
-        return self._is_maximized(window, self.atom.v_max)
-
-    def is_window_maximized_horizontally(self, window: Window) -> bool:
-        """Returns True if _NET_WM_STATE_MAXIMIZED_HORZ is set."""
-        return self._is_maximized(window, self.atom.h_max)
-
-    def is_window_fullscreen(self, window: Window) -> bool:
-        """Returns True if _NET_WM_STATE_FULLSCREEN is set."""
-        return self._is_maximized(window, self.atom.fullscreen)
-
-    def list_windows(self) -> list[Window]:
-        """Returns all client windows in stacking order."""
-        window_ids = get_property_value(self.root, self.atom.client_list_stacking)
-        if window_ids is None:
-            window_ids = get_property_value(self.root, self.atom.client_list)
-        if not window_ids:
-            return []
-        return [self.d.create_resource_object("window", wid) for wid in window_ids]
-
-    def get_window_desktop(self, window: Window) -> int | None:
-        """Returns the desktop index for a given window."""
-        desktop = get_property_value(window, self.atom.wm_desktop)
-        return desktop[0] if desktop else None
 
     def resize_all_windows(self, step: int) -> None:
         """Adjusts the center-column ratio for all tiled windows on the active desktop."""
@@ -422,12 +330,12 @@ class WindowManager:
         (e.g. 'top-left-center'); callers must guard against that.
         """
         result: list[tuple[Window, str]] = []
-        for win in self.list_windows():
+        for win in self.props.list_windows():
             try:
-                desktop = self.get_window_desktop(win)
-                if desktop != self.config.active_desktop and desktop != _ALL_DESKTOPS:
+                desktop = self.props.get_window_desktop(win)
+                if desktop != self.config.active_desktop and desktop != ALL_DESKTOPS:
                     continue
-                zone = determine_tile_zone(win, self.dim, self.is_window_maximized_vertically(win))
+                zone = determine_tile_zone(win, self.dim, self.props.is_window_maximized_vertically(win))
                 if "unknown" not in zone:
                     result.append((win, zone))
             except (BadWindow, BadDrawable) as e:
