@@ -7,7 +7,6 @@ name = "windowcharmer"
 version = "2026.4.1"
 dependencies = [
   "python-xlib>=0.33,<1.0",
-  "pyudev>=0.24.3,<1.0",
   "platformdirs>=4.0,<5.0",
 ]
 requires-python = ">=3.11"
@@ -41,10 +40,6 @@ check_untyped_defs = true
 disallow_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
-
-[[tool.mypy.overrides]]
-module = "pyudev"
-ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 120

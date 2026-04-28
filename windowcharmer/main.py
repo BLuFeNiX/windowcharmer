@@ -8,14 +8,13 @@ from collections.abc import Callable
 
 from Xlib import X
 from Xlib.display import Display
-from Xlib.protocol import rq
 
 from . import __version__
 from .config.actions import TileAction
 from .config.keybindings import load_keybindings
-from .input.key_grabber import KeyGrabber, KeyGrabberError
 from .input.services import InputServices
 from .input.super_passthrough import SuperPassthroughTracker
+from .input.xi2_manager import InputManager, InputManagerError
 from .tiling.manager import WindowManager
 from .x11.display_pool import DisplayPool
 from .x11.keyboard_mapper import KeyboardMapper
@@ -33,9 +32,9 @@ class WindowCharmerApp:
         self.debounce_timer: threading.Timer | None = None
 
         self.mapper = KeyboardMapper()
-        self.grab_dpy: Display = DisplayPool.get_display("grabber")
+        self.input_dpy: Display = DisplayPool.get_display("input")
 
-        # The tracker watches the *physical* Super key — stable across the swap.
+        # Tracker watches the *physical* Super key — stable across the swap.
         # Where the Super_L keysym lives moves when we swap; the physical key
         # doesn't, and that's what the user actually presses.
         self.passthrough_tracker = SuperPassthroughTracker(
@@ -43,27 +42,25 @@ class WindowCharmerApp:
             self.mapper.simulate_hyper_press,
         )
 
-        self.input_services = InputServices(
-            on_rebind_callback=self._schedule_rebind,
-            on_key_event_callback=self._monitor_callback,
-        )
+        self.input_services = InputServices(on_rebind_callback=self._schedule_rebind)
 
-        self.grabber = KeyGrabber(
-            self.grab_dpy,
-            self._setup_key_bindings(),
+        self.input_manager = InputManager(
+            self.input_dpy,
+            key_actions=self._setup_key_bindings(),
+            passthrough_tracker=self.passthrough_tracker,
+            on_keymap_change=self._on_keymap_change,
+            on_keyboard_hotplug=self._schedule_rebind,
             modifier=X.Mod4Mask,
-            on_mapping_notify=self._on_mapping_notify,
         )
 
     def stop(self) -> None:
-        """Request a clean shutdown. Safe to call from a signal handler
-        (KeyGrabber.stop() sets a flag and writes a single non-blocking byte
-        to its wakeup pipe).
+        """Request a clean shutdown. Safe to call from a signal handler —
+        InputManager.stop() sets a flag and pokes a wakeup pipe so a parked
+        next_event() returns immediately.
         """
-        self.grabber.stop()
+        self.input_manager.stop()
 
     def do_action(self, action: TileAction) -> None:
-        """Execute a window manager action (tile, center, etc.)"""
         if action == TileAction.EXIT:
             self.stop()
             return
@@ -73,29 +70,28 @@ class WindowCharmerApp:
         return {key: functools.partial(self.do_action, action) for key, action in self.key_bindings.items()}
 
     def _schedule_rebind(self) -> None:
-        """Debounce a keymap rebind — used by udev and sleep monitors."""
+        """Debounce a keymap rebind. Called from the sleep monitor thread and
+        from the InputManager's HierarchyChanged handler (main thread)."""
         with self.timer_lock:
             if self.debounce_timer:
                 self.debounce_timer.cancel()
             self.debounce_timer = threading.Timer(_REBIND_DEBOUNCE_SECONDS, self.mapper.apply_super_hyper_swap)
             self.debounce_timer.start()
 
-    def _on_mapping_notify(self, event: rq.Event) -> None:
-        """Handle a MappingNotify event from the KeyGrabber."""
-        if event.request != X.MappingKeyboard:
-            logger.debug("MappingNotify for %s, ignoring.", event.request)
-            return
-        logger.debug("MappingNotify for Keyboard, applying swap...")
+    def _on_keymap_change(self) -> None:
+        """Run on every MappingNotify(Keyboard) the InputManager sees.
+
+        Two effects:
+          1. Swap-apply: re-run apply_super_hyper_swap so the daemon's swap
+             is preserved across external keymap edits (setxkbmap, etc.).
+             apply_super_hyper_swap is idempotent against its own broadcast,
+             so we can call it directly here without debouncing.
+          2. Tracker re-key: physical_super_kc() may have moved if setxkbmap
+             relocated Super_L; tell the passthrough tracker its new home.
+        """
+        logger.debug("MappingNotify for Keyboard, applying swap and refreshing tracker keycode")
         self.mapper.apply_super_hyper_swap()
-
-    def _monitor_callback(self, event: rq.Event) -> None:
-        """Handle low-level XRecord events for keycode cache and Super passthrough."""
-        if event.type == X.MappingNotify:
-            self.passthrough_tracker.update_keycode(self.mapper.physical_super_kc())
-            return
-
-        if event.type in (X.KeyPress, X.KeyRelease):
-            self.passthrough_tracker.handle_event(event)
+        self.passthrough_tracker.update_keycode(self.mapper.physical_super_kc())
 
     def run_daemon(self) -> None:
         logger.info("Starting WindowCharmer Daemon...")
@@ -104,15 +100,15 @@ class WindowCharmerApp:
 
         try:
             logger.info("Daemon started. Press Ctrl+C to exit.")
-            self.grabber.start()
+            self.input_manager.start()
         except KeyboardInterrupt:
             pass
         finally:
-            self.grabber.ungrab_keys()
-            # Stop input monitors first so no new debounce timers can be scheduled,
-            # then cancel + join the in-flight one. Joining guarantees the rebind
-            # has completed before mapper.cleanup() restores the canonical mapping
-            # — otherwise a late-firing rebind would re-swap after cleanup.
+            # Stop background services first so no new debounce timers can be
+            # scheduled, then cancel + join the in-flight one. Joining
+            # guarantees a pending rebind completes before mapper.cleanup()
+            # restores the canonical mapping — otherwise a late-firing rebind
+            # would re-swap after cleanup.
             self.input_services.stop_all()
             with self.timer_lock:
                 timer = self.debounce_timer
@@ -160,7 +156,7 @@ def main() -> None:
         signal.signal(sig, lambda *_: app.stop())
     try:
         app.run_daemon()
-    except KeyGrabberError as e:
+    except InputManagerError as e:
         logger.error("Daemon stopped: %s", e)
         logger.debug("", exc_info=True)
         sys.exit(1)

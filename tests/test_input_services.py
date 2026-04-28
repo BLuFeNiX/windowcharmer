@@ -7,54 +7,39 @@ from windowcharmer.input.services import InputServices
 
 
 def _make_services() -> InputServices:
-    return InputServices(on_rebind_callback=MagicMock(), on_key_event_callback=MagicMock())
+    return InputServices(on_rebind_callback=MagicMock())
 
 
-def test_start_all_starts_three_threads() -> None:
-    """One thread per monitor: sleep, udev, key."""
+def test_start_all_starts_sleep_monitor_thread() -> None:
     services = _make_services()
-    with (
-        patch("windowcharmer.input.services.WakeFromSleepDetector"),
-        patch("windowcharmer.input.services.UdevKeyboardMonitor"),
-        patch("windowcharmer.input.services.KeyMonitor"),
-        patch("windowcharmer.input.services.DisplayPool"),
-    ):
+    with patch("windowcharmer.input.services.WakeFromSleepDetector"):
         services.start_all()
 
-    assert len(services._threads) == 3
-    for t in services._threads:
-        assert t.daemon is True
+    assert len(services._threads) == 1
+    assert services._threads[0].daemon is True
 
 
-def test_stop_all_sets_event_and_stops_key_monitor() -> None:
-    """stop_all() must propagate the stop signal and disable the XRecord context."""
+def test_stop_all_propagates_stop_event_and_joins() -> None:
     services = _make_services()
-    services._key_monitor = MagicMock()
 
-    # Real threads that exit when the stop_event is set.
     def _runner() -> None:
         services._stop_event.wait(timeout=2.0)
 
-    services._threads = [threading.Thread(target=_runner, daemon=True) for _ in range(3)]
-    for t in services._threads:
-        t.start()
+    services._threads = [threading.Thread(target=_runner, daemon=True)]
+    services._threads[0].start()
 
     services.stop_all()
 
     assert services._stop_event.is_set()
-    services._key_monitor.stop.assert_called_once()
-    for t in services._threads:
-        assert not t.is_alive()
+    assert not services._threads[0].is_alive()
 
 
-def test_stop_all_logs_when_thread_does_not_exit() -> None:
-    """A monitor thread that ignores stop_event should be reported, not silently abandoned."""
+def test_stop_all_warns_when_thread_does_not_exit() -> None:
     services = _make_services()
-    services._key_monitor = MagicMock()
 
     hung = MagicMock(spec=threading.Thread)
     hung.name = "hung-monitor"
-    hung.is_alive.return_value = True  # still alive after join() timeout
+    hung.is_alive.return_value = True
     services._threads = [hung]
 
     with patch("windowcharmer.input.services.logger") as log:
