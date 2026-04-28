@@ -285,6 +285,18 @@ class KeyboardMapper:
                 if not positions.hyper_l_kc:
                     logger.warning("Hyper_L not in current keymap — cannot simulate")
                     return
+                # Verify Hyper_L is at level 0 of the keycode we're about to
+                # fake at. If it isn't, the synthetic press won't produce the
+                # keysym without a modifier — which means the DE's bare-Hyper
+                # binding won't fire and the menu won't open.
+                row = self._dpy.get_keyboard_mapping(positions.hyper_l_kc, 1)
+                level0 = row[0][0] if row and row[0] else 0
+                logger.debug(
+                    "simulate_hyper_press: faking at kc=%d, level0=0x%x (Hyper_L=0x%x)",
+                    positions.hyper_l_kc,
+                    level0,
+                    self._hyper_l_keysym,
+                )
                 xtest.fake_input(self._dpy, X.KeyPress, positions.hyper_l_kc)
                 xtest.fake_input(self._dpy, X.KeyRelease, positions.hyper_l_kc)
                 self._dpy.flush()
