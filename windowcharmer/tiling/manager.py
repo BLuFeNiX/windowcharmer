@@ -12,14 +12,10 @@ from ..config.actions import TileAction
 from ..config.dimensions import ScreenDimensions
 from ..config.settings import Config
 from ..x11.display_pool import DisplayPool
-from ..x11.ewmh_client import ALL_DESKTOPS, EwmhClient, FrameExtents
+from ..x11.ewmh_client import ALL_DESKTOPS, EwmhClient
 from .zones import determine_tile_zone
 
 logger = logging.getLogger(__name__)
-
-# Re-exported for tests and any callers that imported FrameExtents from here
-# before the EwmhClient extraction.
-__all__ = ["FrameExtents", "WindowManager"]
 
 
 class _ZoneSpec(NamedTuple):

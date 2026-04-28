@@ -280,12 +280,6 @@ class KeyboardMapper:
         We deliberately do NOT fake at where Hyper_L currently lives (the
         physical Super key's keycode post-swap). That would generate a Hyper_L
         event, which doesn't match the default Super_L binding.
-
-        Misleadingly, this function used to be named simulate_hyper_press —
-        but the historical behavior (when it worked) was always to fake at
-        the post-swap-Super position, producing a Super_L event. The name
-        referred to the keycode's PRE-SWAP keysym, not what the synthetic
-        event produces.
         """
         with self._lock:
             try:

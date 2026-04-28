@@ -1,29 +1,19 @@
-"""Unified XI2-based input layer.
+"""XI2-based input event loop.
 
-Replaces the trio of:
-  - KeyGrabber (XGrabKey + select() loop)
-  - KeyMonitor (XRecord on a separate Display + thread)
-  - UdevKeyboardMonitor (pyudev hot-plug + thread)
+Owns three responsibilities on a single Display + thread:
 
-Why XI2:
+  - **Tile-chord dispatch** via XIPassiveGrabDevice on Mod4+key combinations
+    (one call per chord, all four lock-state masks at once).
+  - **Bare-Super-tap detection** via XI2 raw events. Raw events fire before
+    focus dispatch and grab activation, so the daemon sees every keystroke
+    regardless of focus. Synthetic xtest output is filtered by sourceid:
+    every XTEST slave is identified at startup via the canonical
+    XI_PROP_XTEST_DEVICE property (xserver-properties.h) and the set is
+    refreshed on every HierarchyChanged.
+  - **Keyboard hot-plug** via HierarchyChanged events on the same Display.
 
-  1. **sourceid** lets us filter our own xtest-injected events at the API
-     level — XI2 events carry the deviceid that produced them, and XTEST
-     virtual devices can be identified at startup by the canonical
-     XI_PROP_XTEST_DEVICE property (xserver-properties.h). This eliminates
-     the synthetic-event feedback-loop hazard the SuperPassthroughTracker
-     used to guard against with a count-based suppression hack.
-
-  2. **HierarchyChanged** delivers keyboard-hot-plug events over the same X
-     connection as everything else, removing the pyudev dependency and the
-     separate netlink-poll thread.
-
-  3. **XIPassiveGrabDevice** accepts a list of modifier combinations in a
-     single call, replacing the per-lock-combo XGrabKey loop.
-
-Single thread, single Display, three responsibilities collapsed into one
-event loop. Core MappingNotify still arrives over the same connection
-(XI2 doesn't displace core events), so the keymap-rebind path is unchanged.
+Core MappingNotify still arrives over this connection — XI2 doesn't
+displace core events — so the keymap-rebind path uses the same loop.
 """
 
 import contextlib

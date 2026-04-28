@@ -22,8 +22,6 @@ The daemon runs one background thread plus the main thread:
 
 The sleep monitor calls `_schedule_rebind()` which debounces via `threading.Timer` before calling `KeyboardMapper.apply_super_hyper_swap()`. The InputManager's `HierarchyChanged` handler (keyboard hot-plug) goes through the same path. Core `MappingNotify` is dispatched directly without debounce — the swap is idempotent so repeated calls collapse harmlessly.
 
-Earlier versions ran a separate `KeyMonitor` thread (XRecord) and a separate `UdevKeyboardMonitor` thread (pyudev) for keyboard event capture and hot-plug detection respectively. Both responsibilities now live in the InputManager via XI2 raw events and `HierarchyChanged` events on a single Display.
-
 ---
 
 ## DisplayPool
@@ -64,7 +62,7 @@ State transitions:
 
 ## XI2 Input Layer
 
-`InputManager` (`input/xi2_manager.py`) consolidates three responsibilities that used to live in separate modules and threads:
+`InputManager` (`input/xi2_manager.py`) owns three responsibilities on a single Display + thread:
 
 - **Tile-chord dispatch**: `XIPassiveGrabDevice` registers a passive grab for each configured chord. When the chord fires, an XI2 `KeyPress` event arrives via the grab's own `event_mask`, and the InputManager dispatches the matching action.
 - **Bare-Super-tap detection**: XI2 `RawKeyPress` / `RawKeyRelease` events fire before focus dispatch and grab activation, so the daemon sees every keystroke regardless of which window is focused. These feed `SuperPassthroughTracker`. Without raw events, key events would only reach the daemon when the daemon's window was focused (never, in practice).

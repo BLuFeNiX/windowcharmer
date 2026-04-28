@@ -1,15 +1,16 @@
 """Unit tests for WindowManager that require no real X server connection.
 
-After the EwmhClient extraction, these tests exercise tiling policy and
-geometry against a mocked EwmhClient — the X11 wire is no longer the
-boundary, the EwmhClient interface is.
+These tests exercise tiling policy and geometry against a mocked
+EwmhClient — the X11 wire is not the test boundary, the EwmhClient
+interface is.
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from windowcharmer.tiling.manager import FrameExtents, WindowManager, _remap_zone_no_center
+from windowcharmer.tiling.manager import WindowManager, _remap_zone_no_center
+from windowcharmer.x11.ewmh_client import FrameExtents
 
 
 def _make_wm() -> WindowManager:
