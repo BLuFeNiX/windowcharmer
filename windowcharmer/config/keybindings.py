@@ -1,7 +1,7 @@
 import logging
+import os
 import tomllib
-
-from platformdirs import user_config_path
+from pathlib import Path
 
 from .actions import TileAction
 
@@ -47,7 +47,11 @@ def load_keybindings() -> dict[str, TileAction]:
     """Return defaults overridden by ~/.config/windowcharmer/config.toml if present."""
     bindings = get_default_keybindings()
 
-    config_file = user_config_path("windowcharmer") / "config.toml"
+    # XDG Base Directory Spec: $XDG_CONFIG_HOME, falling back to ~/.config when
+    # unset OR empty. The `or` covers both since os.environ.get returns "" for
+    # an empty value, and falsy values trip the fallback.
+    config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    config_file = Path(config_home) / "windowcharmer" / "config.toml"
 
     if not config_file.exists():
         return bindings
