@@ -221,7 +221,7 @@ class InputManager:
                 logger.warning("Key %r has no keycode in current keymap — skipping", key_name)
                 continue
             self._keycode_actions[keycode] = action
-            root.xinput_grab_keycode(
+            reply = root.xinput_grab_keycode(
                 deviceid=xinput.AllMasterDevices,
                 time=X.CurrentTime,
                 keycode=keycode,
@@ -233,6 +233,25 @@ class InputManager:
                 event_mask=xinput.KeyPressMask,
                 modifiers=modifiers,
             )
+            # XIPassiveGrabDevice replies with a list of modifier combos that
+            # FAILED — empty means full success. Conflicts with another client's
+            # exclusive grab (Cinnamon shortcut, IBus trigger, xkb option) show
+            # up here without a synchronous BadAccess, so we surface them as
+            # warnings instead of letting the chord silently never fire.
+            try:
+                failed = list(reply.modifiers)
+            except (AttributeError, TypeError):
+                failed = []
+            if failed:
+                logger.warning(
+                    "Could not grab Mod4+%s (keycode=%d) — another client likely "
+                    "owns this chord (Cinnamon shortcut, input-method trigger, "
+                    "xkb option, etc.). Rebind in ~/.config/windowcharmer/config.toml "
+                    "or unbind the conflicting client. Failed combos: %s",
+                    key_name,
+                    keycode,
+                    [hex(getattr(c, "modifiers", 0)) for c in failed],
+                )
 
     def _ungrab_tile_keys(self, root: Window) -> None:
         modifiers = [X.Mod4Mask | lock for lock in _IGNORED_LOCKS]

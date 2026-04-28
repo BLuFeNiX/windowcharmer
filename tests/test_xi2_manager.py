@@ -54,6 +54,8 @@ def _make_dpy(xtest_atom: int = 289) -> MagicMock:
 
     dpy.has_extension.return_value = True
     dpy.keysym_to_keycode.return_value = 100  # any non-zero
+    # XIPassiveGrabDevice reply: empty .modifiers means all combos grabbed cleanly.
+    dpy.screen.return_value.root.xinput_grab_keycode.return_value = SimpleNamespace(modifiers=[])
     return dpy
 
 
@@ -342,6 +344,47 @@ def test_start_raises_input_manager_error_when_xi2_missing() -> None:
 
     with pytest.raises(InputManagerError, match="XInputExtension"):
         mgr.start()
+
+
+# ---------------------------------------------------------------------------
+# Grab failure surfacing — XIPassiveGrabDevice silently rejects per-modifier
+# combos when another client already holds the chord. Surface as warnings.
+# ---------------------------------------------------------------------------
+
+
+def test_grab_warns_when_passive_grab_partially_fails(caplog: pytest.LogCaptureFixture) -> None:
+    """Reply.modifiers lists the combos that failed. Non-empty → warning."""
+    import logging as stdlib_logging
+
+    actions = {"space": MagicMock()}
+    mgr, _, _, _, _ = _make_manager(actions)
+    root = mgr.dpy.screen.return_value.root
+    failed_entry = SimpleNamespace(modifiers=0x40, status=X.AlreadyGrabbed)  # 0x40 = Mod4Mask
+    root.xinput_grab_keycode.return_value = SimpleNamespace(modifiers=[failed_entry])
+
+    caplog.set_level(stdlib_logging.WARNING, logger="windowcharmer.input.xi2_manager")
+    mgr._grab_tile_keys(root)
+
+    matches = [r for r in caplog.records if "Could not grab" in r.message]
+    assert len(matches) == 1
+    assert "space" in matches[0].message
+
+
+def test_grab_silent_when_passive_grab_fully_succeeds(caplog: pytest.LogCaptureFixture) -> None:
+    """Empty reply.modifiers → no warning."""
+    import logging as stdlib_logging
+
+    actions = {"space": MagicMock()}
+    mgr, _, _, _, _ = _make_manager(actions)
+    root = mgr.dpy.screen.return_value.root
+    # _make_dpy already sets the success default, but be explicit here.
+    root.xinput_grab_keycode.return_value = SimpleNamespace(modifiers=[])
+
+    caplog.set_level(stdlib_logging.WARNING, logger="windowcharmer.input.xi2_manager")
+    mgr._grab_tile_keys(root)
+
+    grab_warnings = [r for r in caplog.records if "Could not grab" in r.message]
+    assert grab_warnings == []
 
 
 # ---------------------------------------------------------------------------
