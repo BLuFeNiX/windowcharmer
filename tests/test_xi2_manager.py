@@ -56,9 +56,7 @@ def _make_dpy(xtest_atom: int = 289) -> MagicMock:
     return dpy
 
 
-def _xi2_key_event(
-    evtype: int, keycode: int, sourceid: int, deviceid: int | None = None
-) -> MagicMock:
+def _xi2_key_event(evtype: int, keycode: int, sourceid: int, deviceid: int | None = None) -> MagicMock:
     """Synthesize an XI2 GenericEvent for any KeyPress/KeyRelease/RawKey* evtype.
 
     For raw events, deviceid defaults to sourceid (slave-originated, what
@@ -217,13 +215,9 @@ def test_raw_master_echo_is_dropped() -> None:
     slave_id = _REAL_KBD_ID
 
     # Slave-originated event: keep.
-    slave_event = _xi2_key_event(
-        xinput.RawKeyPress, keycode=133, sourceid=slave_id, deviceid=slave_id
-    )
+    slave_event = _xi2_key_event(xinput.RawKeyPress, keycode=133, sourceid=slave_id, deviceid=slave_id)
     # Master echo of the same press: drop.
-    master_echo = _xi2_key_event(
-        xinput.RawKeyPress, keycode=133, sourceid=slave_id, deviceid=master_id
-    )
+    master_echo = _xi2_key_event(xinput.RawKeyPress, keycode=133, sourceid=slave_id, deviceid=master_id)
 
     mgr._handle_event(slave_event)
     mgr._handle_event(master_echo)

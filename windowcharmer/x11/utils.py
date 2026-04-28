@@ -15,6 +15,7 @@ class Atoms:
 
     def __init__(self, dpy: Display) -> None:
         intern = dpy.intern_atom
+        # fmt: off
         self.wm_state             = intern("_NET_WM_STATE")
         self.v_max                = intern("_NET_WM_STATE_MAXIMIZED_VERT")
         self.h_max                = intern("_NET_WM_STATE_MAXIMIZED_HORZ")
@@ -27,6 +28,7 @@ class Atoms:
         self.gtk_frame_extents    = intern("_GTK_FRAME_EXTENTS")
         self.client_list          = intern("_NET_CLIENT_LIST")
         self.client_list_stacking = intern("_NET_CLIENT_LIST_STACKING")
+        # fmt: on
 
 
 def get_property_value(window: Window, atom: int, property_type: int = X.AnyPropertyType) -> Sequence[int] | None:

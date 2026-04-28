@@ -326,12 +326,7 @@ class InputManager:
         # MasterAdded creates new XTEST slave devices; SlaveAdded / DeviceEnabled
         # mean a keyboard appeared. Either way, re-enumerate XTEST and trigger
         # a keymap rebind so newly-attached keyboards get the swap applied.
-        relevant = (
-            xinput.MasterAdded
-            | xinput.SlaveAdded
-            | xinput.SlaveAttached
-            | xinput.DeviceEnabled
-        )
+        relevant = xinput.MasterAdded | xinput.SlaveAdded | xinput.SlaveAttached | xinput.DeviceEnabled
         if data.flags & relevant:
             self._xtest_devices = _scan_xtest_devices(self.dpy)
             logger.debug("Hierarchy changed; XTEST device IDs now: %s", sorted(self._xtest_devices))

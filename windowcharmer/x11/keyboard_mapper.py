@@ -161,11 +161,7 @@ class KeyboardMapper:
             canon_super_kc = positions.physical_super_kc
             canon_hyper_kc = positions.physical_hyper_kc
             canon_super_row = self._dpy.get_keyboard_mapping(canon_super_kc, 1)
-            is_inverted = (
-                canon_super_row
-                and canon_super_row[0]
-                and canon_super_row[0][0] == self._hyper_l_keysym
-            )
+            is_inverted = canon_super_row and canon_super_row[0] and canon_super_row[0][0] == self._hyper_l_keysym
             if is_inverted:
                 return _Backup(
                     canon_super_kc=canon_super_kc,
@@ -195,9 +191,7 @@ class KeyboardMapper:
         Returns 0 if neither keysym is present in the keymap.
         """
         with self._lock:
-            return scan_keymap_positions(
-                self._dpy, self._super_l_keysym, self._hyper_l_keysym
-            ).physical_super_kc
+            return scan_keymap_positions(self._dpy, self._super_l_keysym, self._hyper_l_keysym).physical_super_kc
 
     def apply_super_hyper_swap(self) -> None:
         """Swap Super_L and Hyper_L keysyms at level 0 of their canonical positions.
@@ -333,8 +327,7 @@ class KeyboardMapper:
             try:
                 if self._backup is None:
                     logger.warning(
-                        "Original key mappings unavailable — keyboard mapping not restored "
-                        "(backup failed at startup)."
+                        "Original key mappings unavailable — keyboard mapping not restored (backup failed at startup)."
                     )
                     return
                 self._dpy.change_keyboard_mapping(self._backup.canon_super_kc, self._backup.super_row)

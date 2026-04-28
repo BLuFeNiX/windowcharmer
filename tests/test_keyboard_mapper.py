@@ -40,12 +40,8 @@ def _make_mapper(mapping: dict[int, list[int]]) -> KeyboardMapper:
 
 def _bind_live_dict(mapper: KeyboardMapper, live: dict[int, list[int]]) -> None:
     """Wire mapper._dpy so reads/writes act on `live`."""
-    mapper._dpy.get_keyboard_mapping.side_effect = lambda kc, count: [
-        live.get(kc + i, []) for i in range(count)
-    ]
-    mapper._dpy.change_keyboard_mapping.side_effect = lambda kc, keysyms: live.__setitem__(
-        kc, list(keysyms[0])
-    )
+    mapper._dpy.get_keyboard_mapping.side_effect = lambda kc, count: [live.get(kc + i, []) for i in range(count)]
+    mapper._dpy.change_keyboard_mapping.side_effect = lambda kc, keysyms: live.__setitem__(kc, list(keysyms[0]))
 
 
 # ---------------------------------------------------------------------------

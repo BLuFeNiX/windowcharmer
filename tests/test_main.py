@@ -136,10 +136,9 @@ def test_run_daemon_warns_when_sleep_thread_does_not_exit() -> None:
         app = WindowCharmerApp()
         app.run_daemon()
 
-    assert any(
-        "did not exit" in (call.args[0] if call.args else "")
-        for call in log.warning.call_args_list
-    ), "expected a warning about the sleep monitor not exiting"
+    assert any("did not exit" in (call.args[0] if call.args else "") for call in log.warning.call_args_list), (
+        "expected a warning about the sleep monitor not exiting"
+    )
 
 
 def test_run_daemon_can_be_called_twice() -> None:
