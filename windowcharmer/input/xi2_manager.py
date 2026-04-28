@@ -317,7 +317,7 @@ class InputManager:
 
         Two filters before forwarding to the tracker:
 
-          - sourceid in xtest_devices: drop our own simulate_hyper_press
+          - sourceid in xtest_devices: drop our own simulate_super_press
             output to break the feedback loop (otherwise each forwarded
             tap re-triggers the bare-tap detection).
 

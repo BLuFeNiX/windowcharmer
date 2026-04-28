@@ -333,13 +333,17 @@ def test_force_canonical_returns_false_when_keysym_missing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# simulate_hyper_press
+# simulate_super_press
 # ---------------------------------------------------------------------------
 
 
-def test_simulate_hyper_press_targets_current_hyper_l_position() -> None:
-    """xtest fake_input must land at wherever Hyper_L lives now — not a stale
-    keycode. After a swap, Hyper_L moves from kc 207 to kc 133.
+def test_simulate_super_press_targets_current_super_l_position_post_swap() -> None:
+    """The bare-tap passthrough must produce a synthetic Super_L event so the
+    DE's default 'show menu' binding (typically on Super_L) fires. Post-swap
+    the Super_L keysym lives at the canonical Hyper position (kc 207). Faking
+    at the current Hyper_L position (kc 133) instead would generate a Hyper_L
+    event — which doesn't match Cinnamon's default menu binding, so the menu
+    would not open. This test locks in the right post-swap target.
     """
     live = {_CANON_SUPER_KC: [_SUPER_L], _CANON_HYPER_KC: [_HYPER_L]}
     mapper = _make_mapper(live)
@@ -347,10 +351,24 @@ def test_simulate_hyper_press_targets_current_hyper_l_position() -> None:
     mapper.apply_super_hyper_swap()
 
     with patch("windowcharmer.x11.keyboard_mapper.xtest.fake_input") as fake:
-        mapper.simulate_hyper_press()
+        mapper.simulate_super_press()
 
-    # fake_input(dpy, X.KeyPress, kc) and fake_input(dpy, X.KeyRelease, kc).
     keycodes_used = {call.args[2] for call in fake.call_args_list}
-    assert keycodes_used == {_CANON_SUPER_KC}, (
-        f"expected fake_input at kc {_CANON_SUPER_KC} (post-swap Hyper_L home), got {keycodes_used}"
+    assert keycodes_used == {_CANON_HYPER_KC}, (
+        f"expected fake_input at kc {_CANON_HYPER_KC} (post-swap Super_L home), got {keycodes_used}"
     )
+
+
+def test_simulate_super_press_targets_canonical_super_position_pre_swap() -> None:
+    """Before any swap, Super_L lives at the canonical Super position.
+    The simulate must fake there so a Super_L event is produced even if the
+    daemon happens to call simulate before its first swap completes."""
+    live = {_CANON_SUPER_KC: [_SUPER_L], _CANON_HYPER_KC: [_HYPER_L]}
+    mapper = _make_mapper(live)
+    _bind_live_dict(mapper, live)
+
+    with patch("windowcharmer.x11.keyboard_mapper.xtest.fake_input") as fake:
+        mapper.simulate_super_press()
+
+    keycodes_used = {call.args[2] for call in fake.call_args_list}
+    assert keycodes_used == {_CANON_SUPER_KC}

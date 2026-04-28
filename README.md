@@ -108,7 +108,7 @@ Key names follow X11 keysym convention (e.g. `Up`, `KP_Home`, `F1`, `space`). In
 
 WindowCharmer remaps your keyboard while the daemon runs: it **swaps Super_L and Hyper_L** at the X11 level. This is how it intercepts `Super+<key>` without interfering with the desktop environment's own Super key handling.
 
-- When you tap Super alone (no tiling key), WindowCharmer forwards a synthetic `Hyper_L` press, which the DE interprets as opening the application menu — so bare-Super still opens your menu.
+- When you tap Super alone (no tiling key), WindowCharmer forwards a synthetic `Super_L` press at the keycode where the swap parked the `Super_L` keysym (the original Hyper position). Your DE's bare-Super hotkey — typically "Show application menu" — fires from that synthetic event, so bare-Super still opens your menu.
 - On daemon exit the original mapping is restored automatically.
 - If the daemon crashes mid-swap, run `windowcharmer --fix-keymap` to restore the canonical mapping without starting the daemon.
 

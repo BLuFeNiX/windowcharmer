@@ -39,7 +39,7 @@ class WindowCharmerApp:
         # doesn't, and that's what the user actually presses.
         self.passthrough_tracker = SuperPassthroughTracker(
             self.mapper.physical_super_kc(),
-            self.mapper.simulate_hyper_press,
+            self.mapper.simulate_super_press,
         )
 
         self.input_services = InputServices(on_rebind_callback=self._schedule_rebind)

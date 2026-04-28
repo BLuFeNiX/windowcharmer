@@ -16,7 +16,7 @@ class DisplayPool:
     shared across threads if every caller serializes access behind its own
     lock — KeyboardMapper does this for the mapper connection, which is
     touched from the main thread (apply_swap, cleanup) and the debounce
-    timer thread (apply_swap, simulate_hyper_press). python-xlib is not
+    timer thread (apply_swap, simulate_super_press). python-xlib is not
     internally thread-safe, so the lock is mandatory; this docstring is the
     only contract.
     """

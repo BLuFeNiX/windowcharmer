@@ -268,37 +268,41 @@ class KeyboardMapper:
             self._dpy.sync()
             return True
 
-    def simulate_hyper_press(self) -> None:
-        """Simulate a Hyper_L key press+release (used for Super passthrough).
+    def simulate_super_press(self) -> None:
+        """Synthesize a Super_L key press+release for the bare-tap passthrough.
 
-        Re-scans on each call so the synthesized event lands at wherever
-        Hyper_L currently lives — pre-swap that's typically at level 0 of
-        the canonical Hyper position (or level 1+ of it on layouts like
-        xkb US, where the fake won't produce the keysym without Shift —
-        but the swap normally completes before any passthrough fires, so
-        in practice Hyper_L is at level 0 of the canonical Super keycode
-        by the time we get here).
+        The daemon's keymap swap puts Super_L's keysym at the canonical Hyper
+        position (the higher of the two physical keycodes). Faking input there
+        produces a Super_L keysym event from the X server's perspective — and
+        the user's DE typically binds 'show application menu' to bare Super_L
+        (Cinnamon's default), so this is what triggers the menu.
+
+        We deliberately do NOT fake at where Hyper_L currently lives (the
+        physical Super key's keycode post-swap). That would generate a Hyper_L
+        event, which doesn't match the default Super_L binding.
+
+        Misleadingly, this function used to be named simulate_hyper_press —
+        but the historical behavior (when it worked) was always to fake at
+        the post-swap-Super position, producing a Super_L event. The name
+        referred to the keycode's PRE-SWAP keysym, not what the synthetic
+        event produces.
         """
         with self._lock:
             try:
                 positions = scan_keymap_positions(self._dpy, self._super_l_keysym, self._hyper_l_keysym)
-                if not positions.hyper_l_kc:
-                    logger.warning("Hyper_L not in current keymap — cannot simulate")
+                if not positions.super_l_kc:
+                    logger.warning("Super_L not in current keymap — cannot simulate")
                     return
-                # Verify Hyper_L is at level 0 of the keycode we're about to
-                # fake at. If it isn't, the synthetic press won't produce the
-                # keysym without a modifier — which means the DE's bare-Hyper
-                # binding won't fire and the menu won't open.
-                row = self._dpy.get_keyboard_mapping(positions.hyper_l_kc, 1)
+                row = self._dpy.get_keyboard_mapping(positions.super_l_kc, 1)
                 level0 = row[0][0] if row and row[0] else 0
                 logger.debug(
-                    "simulate_hyper_press: faking at kc=%d, level0=0x%x (Hyper_L=0x%x)",
-                    positions.hyper_l_kc,
+                    "simulate_super_press: faking at kc=%d, level0=0x%x (Super_L=0x%x)",
+                    positions.super_l_kc,
                     level0,
-                    self._hyper_l_keysym,
+                    self._super_l_keysym,
                 )
-                xtest.fake_input(self._dpy, X.KeyPress, positions.hyper_l_kc)
-                xtest.fake_input(self._dpy, X.KeyRelease, positions.hyper_l_kc)
+                xtest.fake_input(self._dpy, X.KeyPress, positions.super_l_kc)
+                xtest.fake_input(self._dpy, X.KeyRelease, positions.super_l_kc)
                 self._dpy.flush()
             except Exception as e:
                 logger.error("Error simulating key: %s", e)

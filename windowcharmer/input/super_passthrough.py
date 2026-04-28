@@ -19,10 +19,10 @@ class SuperPassthroughTracker:
     This tracker assumes upstream filtering of synthetic xtest events —
     InputManager drops events whose XI2 sourceid is in the XTEST device set,
     so events that reach handle_event are guaranteed to be from a physical
-    keyboard. Without that upstream filter, simulate_hyper_press's own
-    output would re-trigger the bare-tap detection (Hyper_L lives at the
-    same keycode as physical Super post-swap), looping until the daemon
-    is killed.
+    keyboard. Without that upstream filter, simulate_super_press's own
+    output would re-trigger the bare-tap detection (the synthesized event
+    arrives as a press at a real keycode), looping until the daemon is
+    killed.
     """
 
     # If Super is held longer than this, clear stuck state and suppress the passthrough.
