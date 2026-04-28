@@ -4,7 +4,6 @@ from collections.abc import Callable
 from typing import ClassVar
 
 from Xlib import X
-from Xlib.protocol import rq
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +47,10 @@ class SuperPassthroughTracker:
         self.super_pressed = False
         self.key_pressed_while_super_down = False
 
-    def handle_event(self, event: rq.Event) -> None:
+    def handle_event(self, event_type: int, keycode: int) -> None:
         """Process a KeyPress or KeyRelease event."""
-        if event.type == X.KeyPress:
-            if event.detail == self.super_keycode:
+        if event_type == X.KeyPress:
+            if keycode == self.super_keycode:
                 self.super_pressed = True
                 self.key_pressed_while_super_down = False
                 self._super_press_time = time.monotonic()
@@ -59,7 +58,7 @@ class SuperPassthroughTracker:
             elif self.super_pressed:
                 self.key_pressed_while_super_down = True
 
-        elif event.type == X.KeyRelease and event.detail == self.super_keycode:
+        elif event_type == X.KeyRelease and keycode == self.super_keycode:
             elapsed = time.monotonic() - self._super_press_time
             self.super_pressed = False
             logger.debug("Super_L released")

@@ -332,7 +332,7 @@ class InputManager:
         if data.deviceid != data.sourceid:
             return
         core_type = X.KeyPress if evtype == xinput.RawKeyPress else X.KeyRelease
-        self.passthrough_tracker.handle_event(_CoreKeyEventAdapter(core_type, data.detail))
+        self.passthrough_tracker.handle_event(core_type, data.detail)
 
     def _handle_hierarchy_change(self, data: Any) -> None:
         # MasterAdded creates new XTEST slave devices; SlaveAdded / DeviceEnabled
@@ -348,18 +348,3 @@ class InputManager:
             self._xtest_devices = _scan_xtest_devices(self.dpy)
             logger.debug("Hierarchy changed; XTEST device IDs now: %s", sorted(self._xtest_devices))
             self.on_keyboard_hotplug()
-
-
-class _CoreKeyEventAdapter:
-    """Duck-typed core-X-event for the SuperPassthroughTracker.
-
-    The tracker only reads `.type` and `.detail` — the rest of an X event
-    object is irrelevant to it. We adapt XI2 raw key events into that
-    minimal shape so the tracker can stay protocol-agnostic.
-    """
-
-    __slots__ = ("detail", "type")
-
-    def __init__(self, core_type: int, keycode: int) -> None:
-        self.type = core_type
-        self.detail = keycode

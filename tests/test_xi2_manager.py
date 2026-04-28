@@ -16,7 +16,6 @@ from Xlib.ext.ge import GenericEventCode
 from windowcharmer.input.xi2_manager import (
     InputManager,
     InputManagerError,
-    _CoreKeyEventAdapter,
     _scan_xtest_devices,
 )
 
@@ -193,11 +192,7 @@ def test_real_raw_keypress_reaches_tracker() -> None:
     event = _xi2_key_event(xinput.RawKeyPress, keycode=133, sourceid=_REAL_KBD_ID)
     mgr._handle_event(event)
 
-    tracker.handle_event.assert_called_once()
-    forwarded = tracker.handle_event.call_args.args[0]
-    assert isinstance(forwarded, _CoreKeyEventAdapter)
-    assert forwarded.type == X.KeyPress
-    assert forwarded.detail == 133
+    tracker.handle_event.assert_called_once_with(X.KeyPress, 133)
 
 
 def test_real_raw_keyrelease_reaches_tracker_with_release_type() -> None:
@@ -207,9 +202,7 @@ def test_real_raw_keyrelease_reaches_tracker_with_release_type() -> None:
     event = _xi2_key_event(xinput.RawKeyRelease, keycode=133, sourceid=_REAL_KBD_ID)
     mgr._handle_event(event)
 
-    forwarded = tracker.handle_event.call_args.args[0]
-    assert forwarded.type == X.KeyRelease
-    assert forwarded.detail == 133
+    tracker.handle_event.assert_called_once_with(X.KeyRelease, 133)
 
 
 def test_raw_master_echo_is_dropped() -> None:
