@@ -14,7 +14,7 @@ from windowcharmer.x11.ewmh_client import ALL_DESKTOPS, EwmhClient, FrameExtents
 
 def _make_client() -> EwmhClient:
     """Build an EwmhClient against a mocked Display."""
-    with patch("windowcharmer.x11.ewmh_client.AtomCache") as atom_cls:
+    with patch("windowcharmer.x11.ewmh_client.Atoms") as atom_cls:
         # Give every atom a stable distinct integer so patched get_property_value
         # callbacks can `is`-compare against it.
         atom = atom_cls.return_value

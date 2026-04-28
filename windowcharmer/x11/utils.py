@@ -10,65 +10,23 @@ from Xlib.xobject.drawable import Window
 logger = logging.getLogger(__name__)
 
 
-class AtomCache:
-    """Lazily interns X11 atoms by name and exposes them as typed properties."""
+class Atoms:
+    """Interned X11 atoms. Read once at startup; constants thereafter."""
 
     def __init__(self, dpy: Display) -> None:
-        self._d = dpy
-        self._cache: dict[str, int] = {}
-
-    def _get(self, name: str) -> int:
-        if name not in self._cache:
-            self._cache[name] = self._d.intern_atom(name)
-        return self._cache[name]
-
-    @property
-    def wm_state(self) -> int:
-        return self._get("_NET_WM_STATE")
-
-    @property
-    def v_max(self) -> int:
-        return self._get("_NET_WM_STATE_MAXIMIZED_VERT")
-
-    @property
-    def h_max(self) -> int:
-        return self._get("_NET_WM_STATE_MAXIMIZED_HORZ")
-
-    @property
-    def fullscreen(self) -> int:
-        return self._get("_NET_WM_STATE_FULLSCREEN")
-
-    @property
-    def current_desktop(self) -> int:
-        return self._get("_NET_CURRENT_DESKTOP")
-
-    @property
-    def wm_desktop(self) -> int:
-        return self._get("_NET_WM_DESKTOP")
-
-    @property
-    def workarea(self) -> int:
-        return self._get("_NET_WORKAREA")
-
-    @property
-    def active_window(self) -> int:
-        return self._get("_NET_ACTIVE_WINDOW")
-
-    @property
-    def frame_extents(self) -> int:
-        return self._get("_NET_FRAME_EXTENTS")
-
-    @property
-    def gtk_frame_extents(self) -> int:
-        return self._get("_GTK_FRAME_EXTENTS")
-
-    @property
-    def client_list(self) -> int:
-        return self._get("_NET_CLIENT_LIST")
-
-    @property
-    def client_list_stacking(self) -> int:
-        return self._get("_NET_CLIENT_LIST_STACKING")
+        intern = dpy.intern_atom
+        self.wm_state             = intern("_NET_WM_STATE")
+        self.v_max                = intern("_NET_WM_STATE_MAXIMIZED_VERT")
+        self.h_max                = intern("_NET_WM_STATE_MAXIMIZED_HORZ")
+        self.fullscreen           = intern("_NET_WM_STATE_FULLSCREEN")
+        self.current_desktop      = intern("_NET_CURRENT_DESKTOP")
+        self.wm_desktop           = intern("_NET_WM_DESKTOP")
+        self.workarea             = intern("_NET_WORKAREA")
+        self.active_window        = intern("_NET_ACTIVE_WINDOW")
+        self.frame_extents        = intern("_NET_FRAME_EXTENTS")
+        self.gtk_frame_extents    = intern("_GTK_FRAME_EXTENTS")
+        self.client_list          = intern("_NET_CLIENT_LIST")
+        self.client_list_stacking = intern("_NET_CLIENT_LIST_STACKING")
 
 
 def get_property_value(window: Window, atom: int, property_type: int = X.AnyPropertyType) -> Sequence[int] | None:

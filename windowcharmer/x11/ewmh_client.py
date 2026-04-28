@@ -12,7 +12,7 @@ from Xlib import X, protocol
 from Xlib.display import Display
 from Xlib.xobject.drawable import Window
 
-from .utils import AtomCache, get_property_value
+from .utils import Atoms, get_property_value
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +31,15 @@ class FrameExtents:
 class EwmhClient:
     """Encapsulates EWMH/ICCCM-flavoured window operations on a single display.
 
-    Owns the AtomCache, the root window handle, and a one-shot warning flag
-    for non-EWMH WMs that omit _NET_CURRENT_DESKTOP. Property fetches go
-    through get_property_value which swallows BadWindow/BadDrawable so
+    Owns the interned Atoms, the root window handle, and a one-shot warning
+    flag for non-EWMH WMs that omit _NET_CURRENT_DESKTOP. Property fetches
+    go through get_property_value which swallows BadWindow/BadDrawable so
     callers never see X11 error types for vanished windows.
     """
 
     def __init__(self, dpy: Display) -> None:
         self._dpy = dpy
-        self._atom = AtomCache(dpy)
+        self._atom = Atoms(dpy)
         self._root: Window = dpy.screen().root
         self._warned_missing_desktop: bool = False
 
