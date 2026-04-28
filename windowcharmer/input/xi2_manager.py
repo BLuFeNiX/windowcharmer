@@ -55,6 +55,36 @@ class InputManagerError(Exception):
 _IGNORED_LOCKS: tuple[int, ...] = (0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask)
 
 
+# Wire layout of XIRawKeyEvent's fixed prefix (the bytes after the 10-byte
+# GenericEvent header). python-xlib's xinput.py registers a parser for the
+# regular KeyPress/KeyRelease (DeviceEventData) but not for raw events, so
+# we add one for the fields we actually need: deviceid + sourceid (XTEST
+# filtering) and detail (keycode for the passthrough tracker). Trailing
+# valuator data is ignored — we don't care about pointer-axis values.
+_RAW_DEVICE_EVENT_DATA = rq.Struct(
+    rq.Card16("deviceid"),
+    rq.Card32("time"),
+    rq.Card32("detail"),
+    rq.Card16("sourceid"),
+    rq.Card16("valuators_len"),
+    rq.Card32("flags"),
+)
+
+
+def _register_raw_event_parser(dpy: Display) -> None:
+    """Tell python-xlib how to parse XI2 RawKeyPress / RawKeyRelease events.
+
+    Without this, dpy.next_event() returns a GenericEvent whose .data is
+    None for raw events, leaving us unable to read the keycode or sourceid.
+    """
+    extension = dpy.query_extension("XInputExtension")
+    if extension is None:
+        return
+    opcode = extension.major_opcode
+    dpy.ge_add_event_data(opcode, xinput.RawKeyPress, _RAW_DEVICE_EVENT_DATA)
+    dpy.ge_add_event_data(opcode, xinput.RawKeyRelease, _RAW_DEVICE_EVENT_DATA)
+
+
 def _scan_xtest_devices(dpy: Display) -> frozenset[int]:
     """Return XI deviceids of all devices marked as XTEST.
 
@@ -125,25 +155,36 @@ class InputManager:
         """
         if not self.dpy.has_extension("XInputExtension"):
             raise InputManagerError("XInputExtension not present on this server")
-        # python-xlib hardcodes XI 2.0 — that has KeyPress/Release, HierarchyChanged,
-        # and PassiveGrabDevice, all we need.
+        # python-xlib hardcodes XI 2.0 — that has KeyPress/Release,
+        # RawKeyPress/Release, HierarchyChanged, and PassiveGrabDevice.
         self.dpy.xinput_query_version()
+        _register_raw_event_parser(self.dpy)
 
         self._xtest_devices = _scan_xtest_devices(self.dpy)
         logger.debug("XTEST device IDs: %s", sorted(self._xtest_devices))
 
         root = self.dpy.screen().root
         try:
-            # HierarchyChanged events are device-independent (a single event
-            # covers all hierarchy changes), and the X server enforces that
-            # the mask be selected on AllDevices, NOT AllMasterDevices —
-            # using AllMasterDevices triggers a BadValue. Key events go
-            # through master devices in the normal case, so they get the
-            # AllMasterDevices selection. Two entries, one call.
+            # Three different event-mask scopes:
+            #   - AllMasterDevices, KeyPress/Release: regular events from the
+            #     master keyboard. These arrive when a passive grab fires
+            #     (Super+Up etc) — that's how tile chords reach us.
+            #   - AllDevices, RawKeyPress/Release: every key event from
+            #     every device, fired BEFORE focus/grab dispatch. This is
+            #     what feeds the bare-Super-tap detector — without raw
+            #     events we'd only see keys when the daemon's window was
+            #     focused (never, in practice).
+            #   - AllDevices, HierarchyChanged: device-independent event
+            #     for hot-plug. The X server REJECTS this mask on
+            #     AllMasterDevices with a BadValue, which is why the masks
+            #     get split by deviceid scope.
             root.xinput_select_events(
                 [
                     (xinput.AllMasterDevices, xinput.KeyPressMask | xinput.KeyReleaseMask),
-                    (xinput.AllDevices, xinput.HierarchyChangedMask),
+                    (
+                        xinput.AllDevices,
+                        xinput.RawKeyPressMask | xinput.RawKeyReleaseMask | xinput.HierarchyChangedMask,
+                    ),
                 ]
             )
             # Force any async error from the select to surface NOW, inside
@@ -255,24 +296,33 @@ class InputManager:
             return
 
         evtype = event.evtype
-        if evtype in (xinput.KeyPress, xinput.KeyRelease):
-            self._handle_xi_key_event(evtype, event.data)
+        if evtype == xinput.KeyPress:
+            self._handle_grabbed_chord(event.data)
+        elif evtype in (xinput.RawKeyPress, xinput.RawKeyRelease):
+            self._handle_raw_key_event(evtype, event.data)
         elif evtype == xinput.HierarchyChanged:
             self._handle_hierarchy_change(event.data)
 
-    def _handle_xi_key_event(self, evtype: int, data: Any) -> None:
-        # Filter our own xtest injections at the source — see _scan_xtest_devices.
+    def _handle_grabbed_chord(self, data: Any) -> None:
+        """Regular XI KeyPress arrives only when our passive grab fires —
+        tile chord match by keycode and dispatch."""
+        # Synthetic events shouldn't reach us via passive grab (xtest goes
+        # through master like real input, but our grab modifier requirement
+        # filters most synthesis), but check anyway for safety.
         if data.sourceid in self._xtest_devices:
             return
-
-        # Tile chord match? Dispatch and stop here — the focused window
-        # doesn't see this event (owner_events=False on the grab).
-        if evtype == xinput.KeyPress and data.detail in self._keycode_actions:
+        if data.detail in self._keycode_actions:
             self._keycode_actions[data.detail]()
-            return
 
-        # Otherwise it's a non-grabbed key event for the passthrough tracker.
-        self.passthrough_tracker.handle_event(_CoreKeyEventAdapter(evtype, data.detail))
+    def _handle_raw_key_event(self, evtype: int, data: Any) -> None:
+        """Raw events fire before focus/grab dispatch — every key on every
+        device, regardless of which window is focused. This is what feeds
+        the bare-Super-tap detector. Filter our own xtest injections by
+        sourceid so simulate_hyper_press's output doesn't loop back."""
+        if data.sourceid in self._xtest_devices:
+            return
+        core_type = X.KeyPress if evtype == xinput.RawKeyPress else X.KeyRelease
+        self.passthrough_tracker.handle_event(_CoreKeyEventAdapter(core_type, data.detail))
 
     def _handle_hierarchy_change(self, data: Any) -> None:
         # MasterAdded creates new XTEST slave devices; SlaveAdded / DeviceEnabled
@@ -294,12 +344,12 @@ class _CoreKeyEventAdapter:
     """Duck-typed core-X-event for the SuperPassthroughTracker.
 
     The tracker only reads `.type` and `.detail` — the rest of an X event
-    object is irrelevant to it. We adapt XI2 KeyPress/Release into that
+    object is irrelevant to it. We adapt XI2 raw key events into that
     minimal shape so the tracker can stay protocol-agnostic.
     """
 
     __slots__ = ("detail", "type")
 
-    def __init__(self, xi2_evtype: int, keycode: int) -> None:
-        self.type = X.KeyPress if xi2_evtype == xinput.KeyPress else X.KeyRelease
+    def __init__(self, core_type: int, keycode: int) -> None:
+        self.type = core_type
         self.detail = keycode

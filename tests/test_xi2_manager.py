@@ -5,6 +5,7 @@ filtering, and event dispatch. Tests below mock the X server interactions
 and exercise the dispatch logic directly.
 """
 
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -57,7 +58,7 @@ def _make_dpy(xtest_atom: int = 289) -> MagicMock:
 
 
 def _xi2_key_event(evtype: int, keycode: int, sourceid: int) -> MagicMock:
-    """Synthesize an XI2 GenericEvent for KeyPress/KeyRelease."""
+    """Synthesize an XI2 GenericEvent for any KeyPress/KeyRelease/RawKey* evtype."""
     event = MagicMock()
     event.type = GenericEventCode
     event.evtype = evtype
@@ -135,20 +136,31 @@ def test_scan_skips_devices_that_reject_property_query() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_xtest_keypress_is_dropped_before_reaching_tracker_or_actions() -> None:
-    """Events whose sourceid is in the XTEST set must not reach the tracker
-    or trigger a tile action — they're our own xtest.fake_input output coming
-    back through the event stream."""
+def test_xtest_raw_keypress_is_dropped_before_reaching_tracker() -> None:
+    """Raw events whose sourceid is in the XTEST set must not reach the
+    tracker — they're our own xtest.fake_input output coming back through
+    the raw event stream."""
+    mgr, _, tracker, _, _ = _make_manager()
+    mgr._xtest_devices = frozenset({_XTEST_KBD_ID})
+
+    mgr._handle_event(_xi2_key_event(xinput.RawKeyPress, keycode=133, sourceid=_XTEST_KBD_ID))
+    mgr._handle_event(_xi2_key_event(xinput.RawKeyRelease, keycode=133, sourceid=_XTEST_KBD_ID))
+
+    tracker.handle_event.assert_not_called()
+
+
+def test_xtest_grabbed_keypress_is_dropped_before_dispatch() -> None:
+    """If a synthetic event somehow matches a grabbed keycode (xtest can
+    fake any chord), still don't dispatch — we only want real user input
+    to trigger tile actions."""
     action = MagicMock()
-    mgr, _, tracker, _, _ = _make_manager({"Up": action})
+    mgr, _, _, _, _ = _make_manager({"Up": action})
     mgr._xtest_devices = frozenset({_XTEST_KBD_ID})
     mgr._keycode_actions = {100: action}
 
     mgr._handle_event(_xi2_key_event(xinput.KeyPress, keycode=100, sourceid=_XTEST_KBD_ID))
-    mgr._handle_event(_xi2_key_event(xinput.KeyRelease, keycode=100, sourceid=_XTEST_KBD_ID))
 
     action.assert_not_called()
-    tracker.handle_event.assert_not_called()
 
 
 def test_real_keypress_at_grabbed_keycode_invokes_action() -> None:
@@ -160,17 +172,16 @@ def test_real_keypress_at_grabbed_keycode_invokes_action() -> None:
     mgr._handle_event(_xi2_key_event(xinput.KeyPress, keycode=100, sourceid=_REAL_KBD_ID))
 
     action.assert_called_once()
-    tracker.handle_event.assert_not_called()  # action consumed it; not for tracker
+    tracker.handle_event.assert_not_called()  # regular KeyPress doesn't go to tracker
 
 
-def test_real_keypress_at_non_grabbed_keycode_reaches_tracker() -> None:
-    """Non-tile keys (Super press, alpha keys, etc.) flow through to the
-    bare-Super-tap tracker so it can detect press/release patterns."""
+def test_real_raw_keypress_reaches_tracker() -> None:
+    """Raw events fire before focus/grab dispatch — they're how we see bare
+    Super presses that wouldn't otherwise be delivered to our window."""
     mgr, _, tracker, _, _ = _make_manager()
     mgr._xtest_devices = frozenset({_XTEST_KBD_ID})
-    mgr._keycode_actions = {100: MagicMock()}
 
-    event = _xi2_key_event(xinput.KeyPress, keycode=133, sourceid=_REAL_KBD_ID)
+    event = _xi2_key_event(xinput.RawKeyPress, keycode=133, sourceid=_REAL_KBD_ID)
     mgr._handle_event(event)
 
     tracker.handle_event.assert_called_once()
@@ -180,16 +191,30 @@ def test_real_keypress_at_non_grabbed_keycode_reaches_tracker() -> None:
     assert forwarded.detail == 133
 
 
-def test_real_keyrelease_reaches_tracker_with_release_type() -> None:
+def test_real_raw_keyrelease_reaches_tracker_with_release_type() -> None:
     mgr, _, tracker, _, _ = _make_manager()
     mgr._xtest_devices = frozenset()
 
-    event = _xi2_key_event(xinput.KeyRelease, keycode=133, sourceid=_REAL_KBD_ID)
+    event = _xi2_key_event(xinput.RawKeyRelease, keycode=133, sourceid=_REAL_KBD_ID)
     mgr._handle_event(event)
 
     forwarded = tracker.handle_event.call_args.args[0]
     assert forwarded.type == X.KeyRelease
     assert forwarded.detail == 133
+
+
+def test_regular_keypress_at_non_grabbed_keycode_does_not_reach_tracker() -> None:
+    """Regular XI KeyPress only fires from passive grab activation — so a
+    KeyPress at an ungrabbed keycode shouldn't have arrived in practice,
+    but if it does (e.g. focus on root), the tracker should still ignore
+    it. The tracker is fed exclusively by raw events."""
+    mgr, _, tracker, _, _ = _make_manager()
+    mgr._xtest_devices = frozenset()
+    mgr._keycode_actions = {100: MagicMock()}  # 133 is NOT grabbed
+
+    mgr._handle_event(_xi2_key_event(xinput.KeyPress, keycode=133, sourceid=_REAL_KBD_ID))
+
+    tracker.handle_event.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -321,11 +346,11 @@ def test_start_selects_hierarchy_on_all_devices_not_all_master_devices() -> None
     dpy.pending_events.return_value = 0
     mgr._stopped = True
 
-    with patch("windowcharmer.input.xi2_manager.select.select", return_value=([], [], [])):
-        try:
-            mgr.start()
-        except Exception:
-            pass  # we don't care about loop exit details
+    with (
+        patch("windowcharmer.input.xi2_manager.select.select", return_value=([], [], [])),
+        contextlib.suppress(Exception),  # don't care about loop exit details
+    ):
+        mgr.start()
 
     root = dpy.screen.return_value.root
     root.xinput_select_events.assert_called_once()
@@ -334,6 +359,10 @@ def test_start_selects_hierarchy_on_all_devices_not_all_master_devices() -> None
 
     assert xinput.AllDevices in by_device, "HierarchyChanged must be selected on AllDevices"
     assert by_device[xinput.AllDevices] & xinput.HierarchyChangedMask
+    # Raw events also belong on AllDevices — they need to capture every
+    # device's input regardless of which master it's attached to.
+    assert by_device[xinput.AllDevices] & xinput.RawKeyPressMask
+    assert by_device[xinput.AllDevices] & xinput.RawKeyReleaseMask
     assert xinput.AllMasterDevices in by_device, "Key events must be selected on AllMasterDevices"
     assert by_device[xinput.AllMasterDevices] & xinput.KeyPressMask
     # Crucially: HierarchyChangedMask must NOT be on the AllMasterDevices entry.
