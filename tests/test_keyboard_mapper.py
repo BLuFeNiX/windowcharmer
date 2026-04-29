@@ -242,9 +242,10 @@ def test_apply_swap_handles_hyper_l_only_at_shift_level() -> None:
 
     mapper.apply_super_hyper_swap()
 
-    # Level 0 swapped; level 1+ preserved.
-    assert live[_CANON_SUPER_KC] == [_HYPER_L, 0, _SUPER_L, 0]
-    assert live[_CANON_HYPER_KC] == [_SUPER_L, _HYPER_L, 0, _HYPER_L]
+    # Level 0 swapped; displaced keysym at higher levels replaced to prevent
+    # xkb from associating both virtual modifiers with the same keycode.
+    assert live[_CANON_SUPER_KC] == [_HYPER_L, 0, _HYPER_L, 0]
+    assert live[_CANON_HYPER_KC] == [_SUPER_L, _SUPER_L, 0, _SUPER_L]
 
 
 # ---------------------------------------------------------------------------

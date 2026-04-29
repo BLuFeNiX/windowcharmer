@@ -304,10 +304,23 @@ class KeyboardMapper:
         works while Shift is held). A naive single-keysym write would truncate
         those higher levels — and since cleanup() only restores them on a clean
         shutdown, --fix-keymap would leave a custom layout permanently stripped.
+
+        The displaced keysym (the other half of the Super/Hyper pair) is also
+        replaced at higher levels to prevent xkb from associating both virtual
+        modifiers with the same keycode, which changes the real modifier bits
+        the physical key produces and breaks passive grabs.
         """
         existing = self._dpy.get_keyboard_mapping(keycode, 1)
         if existing and existing[0]:
-            new_row = (new_keysym, *existing[0][1:])
+            displaced = (
+                self._hyper_l_keysym if new_keysym == self._super_l_keysym
+                else self._super_l_keysym
+            )
+            new_row = tuple(
+                new_keysym if ks == displaced else ks
+                for ks in existing[0]
+            )
+            new_row = (new_keysym, *new_row[1:])
         else:
             new_row = (new_keysym,)
         self._dpy.change_keyboard_mapping(keycode, [new_row])
