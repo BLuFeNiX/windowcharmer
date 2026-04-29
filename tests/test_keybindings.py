@@ -12,6 +12,11 @@ def test_defaults_load_without_config(tmp_path: Path) -> None:
     assert bindings == get_default_keybindings()
 
 
+def test_default_tab_binds_cycle() -> None:
+    """Super+Tab is wired to CYCLE by default."""
+    assert get_default_keybindings()["Tab"] == TileAction.CYCLE
+
+
 def test_user_config_overrides_default(tmp_path: Path) -> None:
     config_dir = tmp_path / ".config" / "windowcharmer"
     config_dir.mkdir(parents=True)

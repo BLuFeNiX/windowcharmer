@@ -119,3 +119,52 @@ def test_animate_eval_rejected_invalidates_cached_availability() -> None:
     assert animator.animate(0x1234, 0, 0, 100, 100) is False
     assert animator.is_available() is True
     assert len(calls) == 3
+
+
+def test_animate_single_window_includes_activate_call() -> None:
+    """Single-window animate must call mw.activate so the freshly-tiled
+    window comes to the top — Muffin filters our X11 raise."""
+    animator, calls = _make_animator_with_call([(True, "2"), (True, "1")])
+
+    assert animator.is_available() is True
+    assert animator.animate(0x1234, 0, 0, 100, 100) is True
+    # The animate script substitutes activate=true into the JS body.
+    animate_script = calls[1]
+    assert "mw.activate(global.get_current_time())" in animate_script
+    assert "_wcAnimate(actor, w.tx, w.ty, w.tw, w.th, 180, true)" in animate_script
+
+
+def test_animate_batch_does_not_activate() -> None:
+    """Batch animate (BIGGER/SMALLER) must NOT activate any window —
+    rebalancing the layout must preserve the user's stack order."""
+    animator, calls = _make_animator_with_call([(True, "2"), (True, "2")])
+
+    assert animator.is_available() is True
+    assert animator.animate_batch([(0x1, 0, 0, 1, 1), (0x2, 0, 0, 1, 1)]) is True
+    batch_script = calls[1]
+    assert "_wcAnimate(actor, w.tx, w.ty, w.tw, w.th, 180, false)" in batch_script
+
+
+def test_activate_calls_mw_activate_via_dbus() -> None:
+    """The cycle action uses animator.activate to raise+focus its target
+    via Mutter's API, bypassing Muffin's focus-stealing prevention on
+    the X11 _NET_ACTIVE_WINDOW path."""
+    animator, calls = _make_animator_with_call([(True, "2"), (True, "1")])
+
+    assert animator.activate(0x6200008) is True
+    activate_script = calls[1]
+    assert "actor.meta_window.activate(global.get_current_time())" in activate_script
+    assert "0x6200008" in activate_script or "102760456" in activate_script
+
+
+def test_activate_returns_false_when_actor_not_found() -> None:
+    """val == "0" → no actor for that xid (window not under Cinnamon's
+    control, e.g. an override-redirect popup). Caller falls back to X11."""
+    animator, _ = _make_animator_with_call([(True, "2"), (True, "0")])
+
+    assert animator.activate(0x1234) is False
+
+
+def test_activate_returns_false_when_unavailable() -> None:
+    animator = CinnamonAnimator(disabled=True)
+    assert animator.activate(0x1234) is False

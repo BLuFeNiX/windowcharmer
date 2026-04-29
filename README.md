@@ -74,6 +74,7 @@ For automatic startup on login, add `windowcharmer` to your desktop environment'
 | `Left` | `left` — left column |
 | `Right` | `right` — right column |
 | `space` | `restore` — unmaximize |
+| `Tab` | `cycle` — raise the next window stacked below the focused one in the same zone (or, if the focused window is floating, the next floating window) |
 | Numpad `7` (`KP_Home`) | `top-left` |
 | Numpad `8` (`KP_Up`) | `top-center` |
 | Numpad `9` (`KP_Page_Up`) | `top-right` |
@@ -104,7 +105,7 @@ F2 = "left"
 
 Supported action strings:
 `left`, `right`, `center`, `top-left`, `bottom-left`, `top-right`, `bottom-right`,
-`top-center`, `bottom-center`, `max`, `restore`, `bigger`, `smaller`, `exit`
+`top-center`, `bottom-center`, `max`, `restore`, `bigger`, `smaller`, `cycle`, `exit`
 
 Key names follow X11 keysym convention (e.g. `Up`, `KP_Home`, `F1`, `space`). Invalid action strings or unknown key names are logged as warnings and skipped — the daemon keeps running with the remaining bindings.
 

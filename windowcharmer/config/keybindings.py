@@ -21,6 +21,7 @@ def get_default_keybindings() -> dict[str, TileAction]:
         'Left':         TileAction.LEFT,
         'Right':        TileAction.RIGHT,
         'space':        TileAction.RESTORE,
+        'Tab':          TileAction.CYCLE,
 
         'KP_Home':      TileAction.TOP_LEFT,
         'KP_Up':        TileAction.TOP_CENTER,

@@ -94,6 +94,8 @@ See [x11_coordinates.md](x11_coordinates.md) for why `abs()` is applied to trans
 
 Before issuing `XConfigureWindow`, `move_and_resize()` clears `_NET_WM_STATE_MAXIMIZED_*` and `_NET_WM_STATE_FULLSCREEN` because WMs ignore configure requests on maximized or fullscreen windows.
 
+`CYCLE` (Super+Tab by default) bypasses `_TILE_SPEC`: it raises another window in the focused window's zone bucket (same tile zone, or both classified `unknown` for floating). Tile actions also raise the focused window after committing, so a freshly-tiled window lands on top of any existing same-zone tile. Both paths route their raise through the same activation primitive — see [wm_interactions.md](wm_interactions.md) for the focus-stealing / timestamping / buffering pitfalls that make raising a window on Mutter / Muffin / KWin much harder than the EWMH spec suggests.
+
 ### Screen dimensions (`config/dimensions.py`)
 
 `ScreenDimensions` computes all zone geometry from the workarea rectangle (`_NET_WORKAREA`) and `center_width`. Workarea values account for panels and docks.

@@ -71,7 +71,7 @@ def _xi2_key_event(evtype: int, keycode: int, sourceid: int, deviceid: int | Non
     event.evtype = evtype
     if deviceid is None:
         deviceid = sourceid
-    event.data = SimpleNamespace(detail=keycode, sourceid=sourceid, deviceid=deviceid)
+    event.data = SimpleNamespace(detail=keycode, sourceid=sourceid, deviceid=deviceid, time=12345)
     return event
 
 
@@ -180,7 +180,9 @@ def test_real_keypress_at_grabbed_keycode_invokes_action() -> None:
 
     mgr._handle_event(_xi2_key_event(xinput.KeyPress, keycode=100, sourceid=_REAL_KBD_ID))
 
-    action.assert_called_once()
+    # The chord time (XI2 data.time) is forwarded to the action callback so
+    # downstream EWMH activate messages carry a recent server timestamp.
+    action.assert_called_once_with(12345)
     tracker.handle_event.assert_not_called()  # regular KeyPress doesn't go to tracker
 
 

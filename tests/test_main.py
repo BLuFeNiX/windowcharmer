@@ -29,15 +29,18 @@ def _make_app() -> WindowCharmerApp:
 
 def test_do_action_routes_tile_to_window_manager() -> None:
     app = _make_app()
-    app.do_action(TileAction.LEFT)
-    app.wm.execute_action.assert_called_once_with(TileAction.LEFT)
+    app.do_action(TileAction.LEFT, timestamp=987654)
+    # The chord's X server timestamp threads through to the WM so EWMH
+    # activate messages carry a recent user-time and Mutter / Muffin
+    # don't drop them as focus-stealing.
+    app.wm.execute_action.assert_called_once_with(TileAction.LEFT, 987654)
     app.input_manager.stop.assert_not_called()
 
 
 def test_do_action_exit_short_circuits_to_stop() -> None:
     """EXIT must shut down the input manager loop and never reach the wm."""
     app = _make_app()
-    app.do_action(TileAction.EXIT)
+    app.do_action(TileAction.EXIT, timestamp=12345)
     app.input_manager.stop.assert_called_once()
     app.wm.execute_action.assert_not_called()
 

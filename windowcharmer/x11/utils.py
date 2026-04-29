@@ -28,6 +28,9 @@ class Atoms:
         self.gtk_frame_extents    = intern("_GTK_FRAME_EXTENTS")
         self.client_list          = intern("_NET_CLIENT_LIST")
         self.client_list_stacking = intern("_NET_CLIENT_LIST_STACKING")
+        self.wm_window_type       = intern("_NET_WM_WINDOW_TYPE")
+        self.wm_window_type_normal = intern("_NET_WM_WINDOW_TYPE_NORMAL")
+        self.user_time            = intern("_NET_WM_USER_TIME")
         # fmt: on
 
 

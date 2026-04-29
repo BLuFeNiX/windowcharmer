@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
@@ -180,6 +181,30 @@ class WindowManager:
                 self._spawn_geom[win.id] = cur
                 logger.debug("Refreshed 0x%x snapshot to (x=%d, y=%d, w=%d, h=%d)", win.id, *cur)
 
+    def _raise_window(self, window: Window, timestamp: int = X.CurrentTime) -> None:
+        """Raise a window to the top of the stack.
+
+        Tries Mutter's mw.activate via the Cinnamon animator first when
+        available — that runs inside the WM process and bypasses focus-
+        stealing prevention entirely. Falls back to the X11 EWMH path
+        for non-Cinnamon WMs (and the no-extra install on Cinnamon).
+
+        The X11 fallback passes ``timestamp`` (the chord's X server
+        time) into the activate ClientMessage. Without a recent
+        timestamp, Mutter / Muffin / KWin compare against the target's
+        ``_NET_WM_USER_TIME``, decide our request is older / zero, and
+        silently drop it as focus-stealing — leaving freshly-tiled
+        windows buried under existing same-zone tiles.
+
+        The window is already focused at this call site (it's the
+        active window we just tiled), so activate is a no-op for focus
+        and only reorders the stack.
+        """
+        if self.animator.activate(window.id):
+            return
+        with contextlib.suppress(BadWindow, BadDrawable):
+            self.props.activate_window(window, timestamp)
+
     def _restore_window(self, window: Window) -> None:
         """Return a window to its captured spawn geometry, or no-op if untracked."""
         snap = self._spawn_geom.get(window.id)
@@ -235,9 +260,18 @@ class WindowManager:
             self.d.ungrab_server()
             self.d.flush()
 
-    def execute_action(self, action: TileAction) -> None:
-        """Entry point for a tiling action, called from the InputManager event loop on the main thread."""
-        logger.debug("execute_action: %s", action)
+    def execute_action(self, action: TileAction, timestamp: int = X.CurrentTime) -> None:
+        """Entry point for a tiling action, called from the InputManager event loop on the main thread.
+
+        ``timestamp`` is the X server time of the chord that triggered
+        the action (XI2 ``data.time``). It is forwarded to every EWMH
+        activate so Mutter's focus-stealing prevention treats the
+        request as a recent user gesture rather than dropping it. The
+        ``X.CurrentTime`` default exists for callers that have no
+        timestamp (synthetic / programmatic invocations); chord-driven
+        invocations always pass the real time.
+        """
+        logger.debug("execute_action: %s (time=%d)", action, timestamp)
         try:
             # Read state before grabbing the server to minimise the held window.
             self._update_state()
@@ -255,15 +289,27 @@ class WindowManager:
                     self.resize_all_windows(step)
                 return
 
+            if action == TileAction.CYCLE:
+                self._cycle_below(timestamp)
+                return
+
             win = self.props.get_active_window()
             if win is None:
                 return
             if action in (TileAction.LEFT, TileAction.RIGHT):
                 action = self._resolve_tile_cycle(action, win)
             if action in _TILE_SPEC and self._try_animated_tile(action, win):
+                # The animated path activates inside the same JS call
+                # that does the move_resize_frame — atomic from Mutter's
+                # POV. No follow-up raise needed.
                 return
             with self._grabbed():
                 self._apply_tile_action(action, win)
+            # Non-animated path: explicit raise so the freshly-tiled
+            # window comes forward over any existing same-zone tile.
+            # Skipped for BIGGER/SMALLER (they preserve stacking) and
+            # CYCLE (it raises a different window inside _cycle_below).
+            self._raise_window(win, timestamp)
         except (ConnectionClosedError, DisplayConnectionError):
             raise  # unrecoverable; propagate so the supervisor can restart
         except Exception as e:
@@ -411,6 +457,131 @@ class WindowManager:
             window_zones, self.dim, has_center=self.config.center_width > 0
         ):
             self.move_and_resize(win, x, y, w, h)
+
+    def _cycle_below(self, timestamp: int = X.CurrentTime) -> None:
+        """Activate the bottom-most window in the focused window's bucket
+        that is stacked below the top-most window in that bucket.
+
+        Bucket membership requires:
+
+          * Same zone as the active window (tile zone exact match, or
+            both classified as "unknown" for floating windows). The
+            ``_ZONE_DEVIATION`` (128 px) tolerance is intentionally
+            loose so that windows tiled to the same zone with very
+            different frame extents — e.g. a calculator app whose
+            decoration is 84 px taller than a terminal's — still
+            count as "the same tile" from the user's POV.
+          * NORMAL window type and currently mapped/viewable. These
+            two filters together exclude popups, dialogs, dock
+            windows, tooltips, and minimized / iconified windows
+            that are still in ``_NET_CLIENT_LIST_STACKING`` but
+            invisible to the user.
+          * Same desktop (or sticky).
+
+        Anchor choice — we anchor on the top-most same-bucket window in
+        ``_NET_CLIENT_LIST_STACKING``, NOT on ``_NET_ACTIVE_WINDOW``,
+        because Muffin lags the active-window property after our
+        activate while updating the stacking property promptly. The
+        stack is the reliable signal for "what is on top in this zone
+        right now".
+
+        Each press rotates the bucket by one (bottom-most below the
+        anchor comes to the top), so N presses cycle through all N
+        windows in the bucket and return to the starting window.
+        """
+        active = self.props.get_active_window()
+        if active is None:
+            logger.debug("CYCLE: no active window — skipping")
+            return
+
+        try:
+            active_zone = determine_tile_zone(active, self.dim, self.props.is_window_maximized_vertically(active))
+        except (BadWindow, BadDrawable) as e:
+            logger.debug("CYCLE: active window vanished while reading zone: %s", e)
+            return
+
+        stack = self.props.list_windows()
+        anchor_idx = -1
+        for i in range(len(stack) - 1, -1, -1):
+            if self._is_cycle_target(stack[i], active_zone):
+                anchor_idx = i
+                break
+
+        logger.debug(
+            "CYCLE: active=0x%x zone=%r stack_size=%d anchor_idx=%d",
+            active.id,
+            active_zone,
+            len(stack),
+            anchor_idx,
+        )
+        if anchor_idx <= 0:
+            logger.debug("CYCLE: no same-bucket anchor with anything below it — no-op")
+            return
+
+        # stack[:anchor_idx] is bottom→top of windows below the anchor.
+        # Iterating from the start picks the bottom-most match, giving
+        # the rotation behaviour described above.
+        for candidate in stack[:anchor_idx]:
+            if not self._is_cycle_target(candidate, active_zone):
+                continue
+            logger.debug(
+                "CYCLE: activating 0x%x (anchor=0x%x, active=0x%x, zone=%r)",
+                candidate.id,
+                stack[anchor_idx].id,
+                active.id,
+                active_zone,
+            )
+            # Prefer Mutter's mw.activate (via the Cinnamon animator)
+            # over the X11 EWMH path: it runs inside the WM process so
+            # focus-stealing prevention does not apply. The X11 fallback
+            # passes the chord's X server timestamp so Mutter / Muffin /
+            # KWin treat the request as a recent user gesture rather
+            # than dropping it as focus-stealing.
+            if not self.animator.activate(candidate.id):
+                self.props.activate_window(candidate, timestamp)
+            return
+
+        logger.debug("CYCLE: no same-bucket candidate in stack[:%d]", anchor_idx)
+
+    def _is_cycle_target(self, window: Window, target_zone: str) -> bool:
+        """True when `window` belongs in the active window's cycle bucket.
+
+        Filters applied (in order, cheapest first):
+
+          1. ``_NET_WM_WINDOW_TYPE_NORMAL`` (or unset) — exclude
+             dialogs, dock, menu, notification, tooltip, splash.
+          2. ``map_state == IsViewable`` — exclude iconified /
+             withdrawn windows that are still in the stacking list
+             but invisible to the user.
+          3. Same desktop or sticky.
+          4. Same zone bucket: tile zones match by exact string
+             (``"left"`` matches ``"left"`` but not ``"left-center"``);
+             any zone containing ``"unknown"`` shares one floating
+             bucket with all other unknown shapes. The 128 px
+             ``_ZONE_DEVIATION`` is intentionally loose so that
+             cross-app frame-extents differences (a calculator
+             whose decoration is 84 px taller than a terminal's,
+             for example) still count as "the same tile" — these
+             are real windows the user has placed in the same zone,
+             just rendered at slightly different shapes.
+
+        Sticky windows (_NET_WM_DESKTOP == ALL_DESKTOPS) qualify on
+        every desktop. Windows that vanish mid-check are excluded.
+        """
+        try:
+            if not self.props.is_normal_window(window):
+                return False
+            if not self.props.is_viewable_window(window):
+                return False
+            desktop = self.props.get_window_desktop(window)
+            if desktop != self.config.active_desktop and desktop != ALL_DESKTOPS:
+                return False
+            zone = determine_tile_zone(window, self.dim, self.props.is_window_maximized_vertically(window))
+        except (BadWindow, BadDrawable):
+            return False
+        if "unknown" in target_zone:
+            return "unknown" in zone
+        return zone == target_zone
 
     def _collect_zoned_windows(self) -> list[tuple[Window, str]]:
         """Return (window, zone) pairs for all tiled windows on the active desktop.

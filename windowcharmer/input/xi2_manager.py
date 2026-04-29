@@ -115,7 +115,7 @@ class InputManager:
     def __init__(
         self,
         dpy: Display,
-        key_actions: dict[str, Callable[[], None]],
+        key_actions: dict[str, Callable[[int], None]],
         passthrough_tracker: SuperPassthroughTracker,
         on_keymap_change: Callable[[], None],
         on_keyboard_hotplug: Callable[[], None],
@@ -127,7 +127,11 @@ class InputManager:
         self.on_keyboard_hotplug = on_keyboard_hotplug
 
         # keycode -> action callback, populated after grabs are placed.
-        self._keycode_actions: dict[int, Callable[[], None]] = {}
+        # Callbacks receive the X server timestamp of the chord press
+        # (XI2 ``data.time``); they pass it through to EWMH activate
+        # messages so Mutter's focus-stealing prevention accepts the
+        # request as a recent user gesture rather than dropping it.
+        self._keycode_actions: dict[int, Callable[[int], None]] = {}
         self._xtest_devices: frozenset[int] = frozenset()
         self._stopped = False
         self._wake_r = -1
@@ -315,8 +319,8 @@ class InputManager:
         if data.sourceid in self._xtest_devices:
             return
         if data.detail in self._keycode_actions:
-            logger.debug("Chord matched: keycode=%d", data.detail)
-            self._keycode_actions[data.detail]()
+            logger.debug("Chord matched: keycode=%d time=%d", data.detail, data.time)
+            self._keycode_actions[data.detail](data.time)
 
     def _handle_raw_key_event(self, evtype: int, data: Any) -> None:
         """Raw events fire before focus/grab dispatch — every key on every

@@ -226,6 +226,94 @@ def test_set_fullscreen_flag_off(client: EwmhClient) -> None:
     assert cm_cls.call_args.kwargs["data"] == (32, [0, client._atom.fullscreen, 0, 0, 0])
 
 
+def test_activate_window_sends_net_active_window_with_pager_source(client: EwmhClient) -> None:
+    """source_indication=2 (pager) and a recent timestamp together get the
+    request honoured by Mutter / Muffin / KWin — source alone isn't enough,
+    those WMs also compare the timestamp against the target window's
+    _NET_WM_USER_TIME and drop older / zero requests as focus-stealing."""
+    from Xlib import X
+
+    win = MagicMock()
+    with patch("windowcharmer.x11.ewmh_client.protocol.event.ClientMessage") as cm_cls:
+        client.activate_window(win)
+
+    args = cm_cls.call_args
+    assert args.kwargs["client_type"] == client._atom.active_window
+    assert args.kwargs["window"] is win
+    assert args.kwargs["data"] == (32, [2, X.CurrentTime, 0, 0, 0])
+    client._root.send_event.assert_called_once()
+
+
+def test_activate_window_uses_supplied_timestamp(client: EwmhClient) -> None:
+    """Regression: with timestamp=CurrentTime (0) Mutter / Muffin / KWin
+    silently drop our activate as focus-stealing. The InputManager
+    threads the chord's XI2 ``data.time`` (a recent X server time)
+    through so the request is treated as a user gesture and honoured."""
+    win = MagicMock()
+    with patch("windowcharmer.x11.ewmh_client.protocol.event.ClientMessage") as cm_cls:
+        client.activate_window(win, timestamp=987654321)
+
+    args = cm_cls.call_args
+    assert args.kwargs["data"] == (32, [2, 987654321, 0, 0, 0])
+
+
+def test_activate_window_sets_target_user_time_to_one_less(client: EwmhClient) -> None:
+    """Regression: even with a recent timestamp Mutter rejected our
+    activates because the focused window's _NET_WM_USER_TIME was a
+    hair past our chord time (the user had clicked it less than a
+    frame before pressing the chord). Setting the target's user_time
+    to ``timestamp - 1`` forces it strictly less than our request so
+    Mutter's prevention check passes."""
+    from Xlib import Xatom
+
+    win = MagicMock()
+    client._atom.user_time = 77
+    with patch("windowcharmer.x11.ewmh_client.protocol.event.ClientMessage"):
+        client.activate_window(win, timestamp=1000)
+
+    win.change_property.assert_called_once_with(77, Xatom.CARDINAL, 32, [999])
+
+
+def test_activate_window_skips_user_time_for_current_time(client: EwmhClient) -> None:
+    """No user_time bump when the caller has no real timestamp — that's
+    the legacy / programmatic path; setting user_time to -1 would make
+    the property invalid."""
+    from Xlib import X
+
+    win = MagicMock()
+    with patch("windowcharmer.x11.ewmh_client.protocol.event.ClientMessage"):
+        client.activate_window(win, timestamp=X.CurrentTime)
+
+    win.change_property.assert_not_called()
+
+
+def test_activate_window_flushes_immediately(client: EwmhClient) -> None:
+    """Without a flush the activate sits in the X11 outgoing buffer
+    until the next read (~700 ms when waiting on the next chord
+    release), by which time Mutter's notion of current user time has
+    advanced past our chord timestamp and the activate is dropped as
+    stale. Flushing collapses that gap to microseconds."""
+    win = MagicMock()
+    with patch("windowcharmer.x11.ewmh_client.protocol.event.ClientMessage"):
+        client.activate_window(win, timestamp=12345)
+
+    client._dpy.flush.assert_called_once_with()
+
+
+def test_activate_window_also_issues_explicit_raise(client: EwmhClient) -> None:
+    """The ClientMessage alone is not enough on Muffin: _NET_ACTIVE_WINDOW
+    updates promptly but _NET_CLIENT_LIST_STACKING lags, leaving the next
+    CYCLE press reading stale stacking. An explicit configure(stack_mode=
+    Above) forces the WM to reorder both properties together."""
+    from Xlib import X
+
+    win = MagicMock()
+    with patch("windowcharmer.x11.ewmh_client.protocol.event.ClientMessage"):
+        client.activate_window(win)
+
+    win.configure.assert_called_once_with(stack_mode=X.Above)
+
+
 # --- Sticky-window sentinel ---
 
 
@@ -242,3 +330,69 @@ def test_get_window_desktop_returns_value(client: EwmhClient) -> None:
 def test_get_window_desktop_returns_none_when_unset(client: EwmhClient) -> None:
     with patch("windowcharmer.x11.ewmh_client.get_property_value", return_value=None):
         assert client.get_window_desktop(MagicMock()) is None
+
+
+# --- is_normal_window ---
+
+
+def test_is_normal_window_when_property_missing() -> None:
+    """EWMH default for a window with no _NET_WM_WINDOW_TYPE is NORMAL —
+    most legacy apps simply don't set the hint."""
+    client = _make_client()
+    client._atom.wm_window_type = 23
+    client._atom.wm_window_type_normal = 24
+    with patch("windowcharmer.x11.ewmh_client.get_property_value", return_value=None):
+        assert client.is_normal_window(MagicMock()) is True
+
+
+def test_is_normal_window_when_explicitly_normal() -> None:
+    client = _make_client()
+    client._atom.wm_window_type = 23
+    client._atom.wm_window_type_normal = 24
+    with patch("windowcharmer.x11.ewmh_client.get_property_value", return_value=[24]):
+        assert client.is_normal_window(MagicMock()) is True
+
+
+def test_is_normal_window_excludes_dialog_dock_etc() -> None:
+    """A window typed DIALOG / DOCK / SPLASH / NOTIFICATION etc. must NOT
+    qualify — their geometries can fall inside a tile zone within the
+    128 px deviation tolerance and would pollute Super+Tab cycling."""
+    client = _make_client()
+    client._atom.wm_window_type = 23
+    client._atom.wm_window_type_normal = 24
+    # Some other type atom (e.g. _NET_WM_WINDOW_TYPE_DIALOG = 99).
+    with patch("windowcharmer.x11.ewmh_client.get_property_value", return_value=[99]):
+        assert client.is_normal_window(MagicMock()) is False
+
+
+# --- is_viewable_window ---
+
+
+def test_is_viewable_window_true_when_mapped(client: EwmhClient) -> None:
+    from Xlib import X
+
+    win = MagicMock()
+    win.get_attributes.return_value = MagicMock(map_state=X.IsViewable)
+    assert client.is_viewable_window(win) is True
+
+
+def test_is_viewable_window_false_when_unmapped(client: EwmhClient) -> None:
+    """Iconified / minimized windows: still in _NET_CLIENT_LIST_STACKING
+    but unmapped, so they're invisible. Activating one looks like a dead
+    Super+Tab."""
+    from Xlib import X
+
+    win = MagicMock()
+    win.get_attributes.return_value = MagicMock(map_state=X.IsUnmapped)
+    assert client.is_viewable_window(win) is False
+
+
+def test_is_viewable_window_false_when_window_vanished(client: EwmhClient) -> None:
+    """A window that BadWindows mid-query is treated as not viewable."""
+    from Xlib.error import BadWindow
+
+    err = BadWindow.__new__(BadWindow)
+    err._data = {"resource_id": 0, "sequence_number": 0, "major_opcode": 0, "minor_opcode": 0}
+    win = MagicMock()
+    win.get_attributes.side_effect = err
+    assert client.is_viewable_window(win) is False

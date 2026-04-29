@@ -61,13 +61,18 @@ class WindowCharmerApp:
         """
         self.input_manager.stop()
 
-    def do_action(self, action: TileAction) -> None:
+    def do_action(self, action: TileAction, timestamp: int) -> None:
+        """Run an action triggered by the chord with the given X server
+        timestamp. The timestamp threads through to EWMH activate
+        messages so Mutter's focus-stealing prevention accepts the
+        request as a recent user gesture.
+        """
         if action == TileAction.EXIT:
             self.stop()
             return
-        self.wm.execute_action(action)
+        self.wm.execute_action(action, timestamp)
 
-    def _setup_key_bindings(self) -> dict[str, Callable[[], None]]:
+    def _setup_key_bindings(self) -> dict[str, Callable[[int], None]]:
         return {key: functools.partial(self.do_action, action) for key, action in self.key_bindings.items()}
 
     def _on_keymap_change(self) -> None:

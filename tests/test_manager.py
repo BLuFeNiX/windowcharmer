@@ -5,7 +5,7 @@ EwmhClient — the X11 wire is not the test boundary, the EwmhClient
 interface is.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -18,12 +18,20 @@ def _make_wm() -> WindowManager:
     with (
         patch("windowcharmer.tiling.manager.DisplayPool"),
         patch("windowcharmer.tiling.manager.EwmhClient") as ewmh_cls,
+        patch("windowcharmer.tiling.manager.CinnamonAnimator") as animator_cls,
     ):
         ewmh = ewmh_cls.return_value
         # Sensible defaults so unrelated tests don't trip on attribute access.
         ewmh.get_screen_size.return_value = (1920, 1080)
         ewmh.get_workarea.return_value = None
         ewmh.get_active_desktop.return_value = 0
+        # Default: animator is "unavailable" — animate/activate return False
+        # so non-animated paths run. Tests that need the animator to handle
+        # the action override these on a per-test basis.
+        animator = animator_cls.return_value
+        animator.animate.return_value = False
+        animator.animate_batch.return_value = False
+        animator.activate.return_value = False
         return WindowManager()
 
 
@@ -620,5 +628,407 @@ def test_restore_after_tile_returns_to_pre_tile_geometry(wm: WindowManager) -> N
     wm.execute_action(TileAction.RESTORE)
 
     win.configure.assert_called()
-    kwargs = win.configure.call_args.kwargs
+    # Multiple configure() calls happen: the geometry restore plus a final
+    # stack_mode=Above raise. Pick out the geometry call by the keys it sets.
+    geom_calls = [c for c in win.configure.call_args_list if "x" in c.kwargs]
+    assert len(geom_calls) == 1
+    kwargs = geom_calls[0].kwargs
     assert (kwargs["x"], kwargs["y"], kwargs["width"], kwargs["height"]) == (100, 200, 800, 600)
+
+
+# ---------------------------------------------------------------------------
+# _cycle_below — Super+Tab rotation
+# ---------------------------------------------------------------------------
+
+
+def _cycle_wm() -> WindowManager:
+    """WindowManager wired up so _cycle_below has a sane environment.
+
+    Active desktop = 0; every window in the stack is treated as on-desktop,
+    NORMAL, and viewable unless the test overrides those mocks. Zone
+    classification is stubbed in each test via patching determine_tile_zone.
+    """
+    wm = _make_wm_with_dim()
+    wm.props.is_window_maximized_vertically.return_value = False
+    wm.props.get_window_desktop.return_value = 0
+    wm.props.is_normal_window.return_value = True
+    wm.props.is_viewable_window.return_value = True
+    return wm
+
+
+def test_cycle_below_rotates_within_same_tile_zone() -> None:
+    """Stack (bottom→top) [W3, W2, W1] all in zone='left', focus=W1.
+    The cycle picks W3 (bottom-most same-zone below active), giving a
+    clean rotation through all three windows on repeated presses."""
+    wm = _cycle_wm()
+    w1, w2, w3 = MagicMock(id=0x1), MagicMock(id=0x2), MagicMock(id=0x3)
+    wm.props.list_windows.return_value = [w3, w2, w1]
+    wm.props.get_active_window.return_value = w1
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._cycle_below()
+
+    wm.props.activate_window.assert_called_once_with(w3, ANY)
+
+
+def test_cycle_below_skips_different_zone_to_reach_same_zone() -> None:
+    """A RIGHT-tiled window between the LEFT-tiled active and a LEFT-tiled
+    candidate further down is skipped — different zone, different bucket."""
+    wm = _cycle_wm()
+    same_zone_bot = MagicMock(id=0xB07)
+    different_zone = MagicMock(id=0xD1F)
+    active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [same_zone_bot, different_zone, active]
+    wm.props.get_active_window.return_value = active
+
+    def zone_for(win: object, *_: object, **__: object) -> str:
+        return "right" if win is different_zone else "left"
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", side_effect=zone_for):
+        wm._cycle_below()
+
+    wm.props.activate_window.assert_called_once_with(same_zone_bot, ANY)
+
+
+def test_cycle_below_does_not_pull_other_zone_when_no_same_zone_below() -> None:
+    """Active is LEFT-tiled; only RIGHT-tiled windows sit below. The cycle
+    must not yank an unrelated tile forward — it stays a no-op."""
+    wm = _cycle_wm()
+    right_tiled = MagicMock(id=0x71)
+    active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [right_tiled, active]
+    wm.props.get_active_window.return_value = active
+
+    def zone_for(win: object, *_: object, **__: object) -> str:
+        return "right" if win is right_tiled else "left"
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", side_effect=zone_for):
+        wm._cycle_below()
+
+    wm.props.activate_window.assert_not_called()
+
+
+def test_cycle_below_floating_active_cycles_other_floating_windows() -> None:
+    """When the focused window is floating (zone contains 'unknown'), the
+    cycle pulls another floating window forward — even if it's a different
+    'unknown'-shaped string (e.g. 'top-unknown' vs 'unknown'). Tiled
+    windows in the stack are skipped."""
+    wm = _cycle_wm()
+    floating_bot = MagicMock(id=0xF1)
+    tiled_mid = MagicMock(id=0x71)
+    floating_active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [floating_bot, tiled_mid, floating_active]
+    wm.props.get_active_window.return_value = floating_active
+
+    def zone_for(win: object, *_: object, **__: object) -> str:
+        if win is floating_active:
+            return "unknown"
+        if win is tiled_mid:
+            return "left"
+        return "top-unknown"  # different unknown shape — same bucket
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", side_effect=zone_for):
+        wm._cycle_below()
+
+    wm.props.activate_window.assert_called_once_with(floating_bot, ANY)
+
+
+def test_cycle_below_skips_window_on_other_desktop() -> None:
+    """Cycling stays on the active desktop. A same-zone window on a
+    different desktop is invisible to Super+Tab."""
+    wm = _cycle_wm()
+    other_desk = MagicMock(id=0xD1)
+    same_desk = MagicMock(id=0xD0)
+    active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [other_desk, same_desk, active]
+    wm.props.get_active_window.return_value = active
+
+    def desk_for(win: object) -> int:
+        return 99 if win is other_desk else 0
+
+    wm.props.get_window_desktop.side_effect = desk_for
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._cycle_below()
+
+    wm.props.activate_window.assert_called_once_with(same_desk, ANY)
+
+
+def test_cycle_below_includes_sticky_window() -> None:
+    """A sticky window (_NET_WM_DESKTOP == ALL_DESKTOPS) in the same zone
+    participates in the cycle on every desktop."""
+    from windowcharmer.x11.ewmh_client import ALL_DESKTOPS
+
+    wm = _cycle_wm()
+    wm.config.active_desktop = 1
+    sticky = MagicMock(id=0x57)
+    active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [sticky, active]
+    wm.props.get_active_window.return_value = active
+    wm.props.get_window_desktop.return_value = ALL_DESKTOPS
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._cycle_below()
+
+    wm.props.activate_window.assert_called_once_with(sticky, ANY)
+
+
+def test_cycle_below_no_active_window_is_noop() -> None:
+    wm = _cycle_wm()
+    wm.props.get_active_window.return_value = None
+
+    wm._cycle_below()
+
+    wm.props.activate_window.assert_not_called()
+    wm.props.list_windows.assert_not_called()
+
+
+def test_cycle_below_includes_same_zone_window_with_different_geometry() -> None:
+    """Regression: a too-tight 64 px geometry filter excluded a calculator
+    app whose decoration was 84 px taller than the terminals tiled to
+    the same zone — the user couldn't cycle into / out of the calc.
+    Different apps in the same tile zone routinely have different frame
+    extents; ``classify_zone``'s 128 px deviation tolerance is the right
+    granularity for cycle membership, not a tighter geometry match."""
+    from unittest.mock import MagicMock
+
+    wm = _cycle_wm()
+    terminal = MagicMock(id=0x46884E2)
+    calc = MagicMock(id=0x6200008)
+    active = MagicMock(id=0x4698C7A)
+    wm.props.list_windows.return_value = [calc, terminal, active]
+    wm.props.get_active_window.return_value = active
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="right"):
+        wm._cycle_below()
+
+    # calc has different geometry than the terminals but is still tiled
+    # right — it must remain a valid cycle candidate. With "bottom-most"
+    # selection, calc (at idx 0) is the one activated.
+    wm.props.activate_window.assert_called_once_with(calc, ANY)
+
+
+def test_cycle_below_excludes_iconified_window() -> None:
+    """A minimized window is still in _NET_CLIENT_LIST_STACKING but
+    map_state == IsUnmapped. Activating it raises in the stack but
+    leaves the window invisible — looks like a dead Super+Tab."""
+    from unittest.mock import MagicMock
+
+    wm = _cycle_wm()
+    iconified = MagicMock(id=0x71)
+    real = MagicMock(id=0x42)
+    active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [iconified, real, active]
+    wm.props.get_active_window.return_value = active
+
+    def viewable(win: object) -> bool:
+        return win is not iconified
+
+    wm.props.is_viewable_window.side_effect = viewable
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="right"):
+        wm._cycle_below()
+
+    targets = [c.args[0] for c in wm.props.activate_window.call_args_list]
+    assert real in targets
+    assert iconified not in targets
+
+
+def test_cycle_below_skips_non_normal_windows() -> None:
+    """Popups, dialogs, notifications etc. with geometries that happen
+    to overlap a tile zone (within the 128 px tolerance) must not be
+    cycled — only NORMAL windows the user manages."""
+    wm = _cycle_wm()
+    real = MagicMock(id=0xACE)
+    popup = MagicMock(id=0x90D)  # same zone, not NORMAL
+    active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [real, popup, active]
+    wm.props.get_active_window.return_value = active
+
+    def normal_for(win: object) -> bool:
+        return win is not popup
+
+    wm.props.is_normal_window.side_effect = normal_for
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="right"):
+        wm._cycle_below()
+
+    wm.animator.activate.return_value = False  # ensure fallback path is exercised
+    # The popup must be filtered out, leaving only `real` as a candidate.
+    # Either animator.activate or props.activate_window must have been
+    # called with `real` — never with `popup`.
+    targets_via_animator = [c.args[0] for c in wm.animator.activate.call_args_list]
+    targets_via_x11 = [c.args[0] for c in wm.props.activate_window.call_args_list]
+    assert popup.id not in targets_via_animator
+    assert popup not in targets_via_x11
+    assert real.id in targets_via_animator or real in targets_via_x11
+
+
+def test_cycle_below_prefers_animator_activate_over_x11() -> None:
+    """The cycle target is raised via Mutter's mw.activate (through the
+    Cinnamon animator) first — Muffin filters the X11 _NET_ACTIVE_WINDOW
+    path through focus-stealing prevention and silently drops it."""
+    wm = _cycle_wm()
+    target = MagicMock(id=0x123)
+    active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [target, active]
+    wm.props.get_active_window.return_value = active
+    wm.animator.activate.return_value = True  # animator handles it
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="right"):
+        wm._cycle_below()
+
+    wm.animator.activate.assert_called_once_with(target.id)
+    wm.props.activate_window.assert_not_called()
+
+
+def test_cycle_below_falls_back_to_x11_when_animator_misses() -> None:
+    """If Cinnamon can't find the actor (or isn't running), fall back
+    to the X11 EWMH path — better some raise than none."""
+    wm = _cycle_wm()
+    target = MagicMock(id=0x123)
+    active = MagicMock(id=0xAC7)
+    wm.props.list_windows.return_value = [target, active]
+    wm.props.get_active_window.return_value = active
+    wm.animator.activate.return_value = False  # animator unavailable / actor missing
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="right"):
+        wm._cycle_below()
+
+    wm.animator.activate.assert_called_once_with(target.id)
+    wm.props.activate_window.assert_called_once_with(target, ANY)
+
+
+def test_cycle_below_anchors_on_stack_top_when_active_lags() -> None:
+    """Regression: Muffin reorders _NET_CLIENT_LIST_STACKING after our
+    activate request but lags _NET_ACTIVE_WINDOW (sometimes for several
+    seconds). Anchoring on the stale active produces every-other-press
+    no-ops because the stale active sits below the freshly-raised peer
+    in the stack and ``stack[:active_idx]`` no longer covers it.
+    Anchoring on the top-most same-zone window in the stack instead
+    keeps the cycle correct under the lag."""
+    wm = _cycle_wm()
+    new_top = MagicMock(id=0x1701)  # raised by the previous cycle press; now visibly on top
+    stale_active = MagicMock(id=0x1AC7)  # still reported by _NET_ACTIVE_WINDOW
+    wm.props.list_windows.return_value = [stale_active, new_top]
+    wm.props.get_active_window.return_value = stale_active
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="right"):
+        wm._cycle_below()
+
+    # Without the stack anchor we would compute active_idx=0 (stale active
+    # at the bottom of its zone) and bail. With the stack anchor we pick
+    # new_top as the anchor, find stale_active beneath it, and activate
+    # it — flipping the pair and continuing the rotation.
+    wm.props.activate_window.assert_called_once_with(stale_active, ANY)
+
+
+def test_cycle_below_active_not_in_stack_is_noop() -> None:
+    """A stale active window pointer (closed mid-action) must not crash."""
+    wm = _cycle_wm()
+    active = MagicMock(id=0xAC7)
+    other = MagicMock(id=0x999)
+    wm.props.list_windows.return_value = [other]
+    wm.props.get_active_window.return_value = active
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._cycle_below()
+
+    wm.props.activate_window.assert_not_called()
+
+
+def test_execute_action_raises_active_window_after_non_animated_tile() -> None:
+    """When the animator is unavailable, the explicit X11 raise must fire
+    on the focused window so it lands on top of any existing same-zone
+    tile — otherwise opening a new terminal and tiling it RIGHT can
+    leave it buried (the user's complaint)."""
+    from windowcharmer.config.actions import TileAction
+
+    wm = _make_wm_with_dim()
+    wm.props.is_window_maximized_vertically.return_value = False
+    wm.props.is_window_maximized_horizontally.return_value = False
+    wm.props.is_window_fullscreen.return_value = False
+    wm.props.get_gtk_frame_extents.return_value = None
+    wm.props.get_net_frame_extents.return_value = None
+
+    win = _stub_window(0xACE, 0, 0, 800, 600)
+    wm.props.list_windows.return_value = [win]
+    wm.props.get_active_window.return_value = win
+    # Force the non-animated path so the raise has to come from us.
+    wm.animator.animate.return_value = False
+    wm.animator.activate.return_value = False
+
+    wm.execute_action(TileAction.LEFT)
+
+    wm.props.activate_window.assert_called_once_with(win, ANY)
+
+
+def test_execute_action_skips_explicit_raise_when_animator_handles_it() -> None:
+    """The animator's JS now bundles mw.activate into the same script as
+    move_resize_frame — atomic from Mutter's POV. A follow-up X11 raise
+    would be a redundant round trip that can race with Mutter's own
+    processing of the activate."""
+    from windowcharmer.config.actions import TileAction
+
+    wm = _make_wm_with_dim()
+    win = MagicMock(id=0xACE)
+    wm.props.get_active_window.return_value = win
+    wm.props.list_windows.return_value = [win]
+    wm.animator.animate.return_value = True  # animator handled tile + raise
+
+    wm.execute_action(TileAction.LEFT)
+
+    wm.props.activate_window.assert_not_called()
+
+
+def test_execute_action_does_not_raise_on_resize_all() -> None:
+    """BIGGER/SMALLER must NOT raise any window — the user is rebalancing
+    the layout, not changing focus order. Each tile keeps its existing
+    stack position."""
+    from windowcharmer.config.actions import TileAction
+
+    wm = _make_wm_with_dim()
+    wm.props.is_window_maximized_vertically.return_value = False
+    wm.props.is_window_maximized_horizontally.return_value = False
+    wm.props.is_window_fullscreen.return_value = False
+    wm.props.get_gtk_frame_extents.return_value = None
+    wm.props.get_net_frame_extents.return_value = None
+    wm.props.get_window_desktop.return_value = 0
+
+    win = _stub_window(0xACE, wm.dim.x_left, wm.dim.y_top, wm.dim.w_side, wm.dim.h_full)
+    wm.props.list_windows.return_value = [win]
+
+    wm.execute_action(TileAction.BIGGER)
+
+    wm.props.activate_window.assert_not_called()
+
+
+def test_execute_action_does_not_raise_on_cycle() -> None:
+    """CYCLE raises a *different* window via activate_window inside
+    _cycle_below — the focused window must NOT be raised in addition,
+    otherwise the cycle is undone."""
+    from windowcharmer.config.actions import TileAction
+
+    wm = _make_wm_with_dim()
+    win = MagicMock(id=0xACE)
+    wm.props.get_active_window.return_value = win
+    wm.props.list_windows.return_value = [win]
+
+    with patch.object(wm, "_cycle_below"):
+        wm.execute_action(TileAction.CYCLE)
+
+    wm.props.activate_window.assert_not_called()
+
+
+def test_execute_action_routes_cycle_to_cycle_below(wm: WindowManager) -> None:
+    """CYCLE bypasses the active-window/_TILE_SPEC dispatch path entirely.
+    The chord's X server timestamp is forwarded so the EWMH activate
+    inside _cycle_below carries a recent user-time."""
+    from windowcharmer.config.actions import TileAction
+
+    wm.props.get_workarea.return_value = (0, 40, 1920, 1000)
+    with patch.object(wm, "_cycle_below") as cycle:
+        wm.execute_action(TileAction.CYCLE, timestamp=42424242)
+
+    cycle.assert_called_once_with(42424242)
+    wm.props.get_active_window.assert_not_called()

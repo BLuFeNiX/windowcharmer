@@ -5,11 +5,13 @@ only. The X11 vocabulary (atoms, get_full_property, send_event, configure
 masks) lives behind this single collaborator.
 """
 
+import contextlib
 import logging
 from dataclasses import dataclass
 
-from Xlib import X, protocol
+from Xlib import X, Xatom, protocol
 from Xlib.display import Display
+from Xlib.error import BadDrawable, BadWindow
 from Xlib.xobject.drawable import Window
 
 from .utils import Atoms, get_property_value
@@ -106,6 +108,38 @@ class EwmhClient:
         desktop = get_property_value(window, self._atom.wm_desktop)
         return desktop[0] if desktop else None
 
+    def is_normal_window(self, window: Window) -> bool:
+        """True if window has _NET_WM_WINDOW_TYPE_NORMAL or no type set.
+
+        Per EWMH §_NET_WM_WINDOW_TYPE, a missing property defaults to
+        NORMAL for windows with WM_TRANSIENT_FOR unset, or DIALOG with
+        it set — we conservatively treat "missing" as NORMAL since most
+        legacy apps just don't set the hint. Anything explicitly typed
+        DOCK / MENU / TOOLTIP / NOTIFICATION / SPLASH / DROPDOWN_MENU /
+        POPUP_MENU / COMBO / DND is excluded so the Super+Tab cycle
+        only walks user-managed windows.
+        """
+        types = get_property_value(window, self._atom.wm_window_type)
+        if not types:
+            return True
+        return self._atom.wm_window_type_normal in types
+
+    def is_viewable_window(self, window: Window) -> bool:
+        """True if the window is currently mapped and on a mapped parent.
+
+        Used by the cycle to skip iconified / withdrawn windows: under
+        Mutter, minimizing a window unmaps it (``map_state == IsUnmapped``)
+        even though it stays in ``_NET_CLIENT_LIST_STACKING``. Activating
+        an unmapped same-zone window appears to the user as "Super+Tab
+        did nothing" — the WM raises in the stack, but the window stays
+        invisible.
+        """
+        try:
+            attrs = window.get_attributes()
+        except (BadWindow, BadDrawable):
+            return False
+        return attrs.map_state == X.IsViewable
+
     # --- Frame extents ---
 
     def get_gtk_frame_extents(self, window: Window) -> FrameExtents | None:
@@ -160,3 +194,62 @@ class EwmhClient:
         )
         mask = X.SubstructureRedirectMask | X.SubstructureNotifyMask
         self._root.send_event(event, event_mask=mask)
+
+    def activate_window(self, window: Window, timestamp: int = X.CurrentTime) -> None:
+        """Raise and focus a window via _NET_ACTIVE_WINDOW client message.
+
+        Per EWMH §_NET_ACTIVE_WINDOW the data payload is
+        [source_indication, timestamp, requestor_active, 0, 0]. We use
+        source=2 (pager) — the closest match for a daemon making
+        explicit user gestures.
+
+        Three pieces are required for Mutter / Muffin / KWin to actually
+        honour this on a non-Cinnamon install:
+
+        1. ``timestamp`` must be a real X server time, not
+           ``X.CurrentTime`` (=0). Callers thread the chord's XI2
+           ``data.time`` through.
+
+        2. ``_NET_WM_USER_TIME`` is set on the target to
+           ``timestamp - 1`` *before* sending the activate. Mutter's
+           focus-stealing prevention rejects activates whose timestamp
+           is older than the target's recorded user_time — and if the
+           user clicked the previously-focused window less than a frame
+           before pressing the chord, the focused window's user_time
+           can be a hair past our chord time. Forcing the target to
+           a slightly-older user_time guarantees our request "wins"
+           the comparison without lying about the actual chord time.
+
+        3. We ``flush()`` immediately. Without it the client message
+           sits in the python-xlib outgoing buffer until the next read
+           — typically when the user releases the chord, ~700 ms
+           later. By then Mutter's notion of "current user time" has
+           advanced past our chord timestamp and the activate is
+           dropped as stale. Flushing collapses that gap to
+           microseconds.
+
+        We also issue an explicit ``stack_mode=Above`` configure: on
+        Muffin the activate ClientMessage updates _NET_ACTIVE_WINDOW
+        but lags _NET_CLIENT_LIST_STACKING, so the next CYCLE press
+        reads the focused window still at its old stack position. The
+        ConfigureRequest forces the WM to reorder both properties in
+        one shot.
+        """
+        if timestamp != X.CurrentTime:
+            with contextlib.suppress(BadWindow, BadDrawable):
+                window.change_property(
+                    self._atom.user_time,
+                    Xatom.CARDINAL,
+                    32,
+                    [max(0, timestamp - 1)],
+                )
+
+        event = protocol.event.ClientMessage(
+            window=window,
+            client_type=self._atom.active_window,
+            data=(32, [2, timestamp, 0, 0, 0]),
+        )
+        mask = X.SubstructureRedirectMask | X.SubstructureNotifyMask
+        self._root.send_event(event, event_mask=mask)
+        window.configure(stack_mode=X.Above)
+        self._dpy.flush()

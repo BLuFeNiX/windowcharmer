@@ -17,4 +17,5 @@ class TileAction(StrEnum):
     RESTORE = "restore"
     BIGGER = "bigger"
     SMALLER = "smaller"
+    CYCLE = "cycle"
     EXIT = "exit"

@@ -54,6 +54,7 @@ Keys are X11 keysym names (case-sensitive). Invalid action strings or unknown ke
 | `restore` | Unmaximize / restore |
 | `bigger` | Widen the center column one step |
 | `smaller` | Narrow the center column one step |
+| `cycle` | Raise the bottom-most window stacked below the focused one that shares its zone (e.g. another LEFT-tiled window when focused on LEFT). Floating windows cycle among other floating windows. Repeated presses rotate through every window in that bucket on the active desktop |
 | `exit` | Stop the WindowCharmer daemon |
 
 ### Supported Key Names

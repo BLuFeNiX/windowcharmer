@@ -18,7 +18,7 @@ _PROBE_COOLDOWN_S = 30.0
 
 
 _ANIMATE_FN = """\
-function _wcAnimate(actor, tx, ty, tw, th, dur) {
+function _wcAnimate(actor, tx, ty, tw, th, dur, activate) {
     let mw = actor.meta_window;
     let Main = imports.ui.main;
     let fr = mw.get_frame_rect();
@@ -38,6 +38,12 @@ function _wcAnimate(actor, tx, ty, tw, th, dur) {
     }
 
     mw.move_resize_frame(false, tx, ty, tw, th);
+    // Raise through Mutter's own API instead of relying on a follow-up
+    // X11 ConfigureRequest. The X11 path is filtered through Muffin's
+    // focus-stealing prevention and is silently dropped in some
+    // scenarios, leaving freshly-tiled windows buried under existing
+    // same-zone tiles. mw.activate() bypasses that filter.
+    if (activate) mw.activate(global.get_current_time());
     actor.remove_all_transitions();
 
     actor.translation_x = prevX - newActorX;
@@ -51,14 +57,20 @@ function _wcAnimate(actor, tx, ty, tw, th, dur) {
 }"""
 
 
-def _make_batch_script(targets: list[tuple[int, int, int, int, int]]) -> str:
+def _make_batch_script(targets: list[tuple[int, int, int, int, int]], activate: bool) -> str:
     """Build the JS payload for animating a batch of windows.
 
     Returns the count of actors actually animated, so a single-window animate
     can distinguish 'actor not found' (0) from success (1) and fall back to
     the non-animated configure() path.
+
+    ``activate`` controls whether each animated window is also raised+
+    focused via ``mw.activate``. True for single-window tiles (the user
+    just acted on it — it must be on top); False for batch resize
+    (BIGGER/SMALLER reshape the layout without disturbing focus order).
     """
     entries = ", ".join(f"{{xid:{xid},tx:{tx},ty:{ty},tw:{tw},th:{th}}}" for xid, tx, ty, tw, th in targets)
+    activate_js = "true" if activate else "false"
     return f"""\
 (function() {{
 {_ANIMATE_FN}
@@ -68,10 +80,30 @@ def _make_batch_script(targets: list[tuple[int, int, int, int, int]]) -> str:
     for (let w of windows) {{
         let actor = actors.find(a => a.meta_window.get_xwindow() === w.xid);
         if (!actor) continue;
-        _wcAnimate(actor, w.tx, w.ty, w.tw, w.th, {ANIMATION_DURATION_MS});
+        _wcAnimate(actor, w.tx, w.ty, w.tw, w.th, {ANIMATION_DURATION_MS}, {activate_js});
         count++;
     }}
     return count;
+}})()"""
+
+
+def _make_activate_script(xid: int) -> str:
+    """JS that raises+focuses a window via Mutter's mw.activate.
+
+    Used for the cycle action — the X11 ``_NET_ACTIVE_WINDOW`` client
+    message + ConfigureRequest pair was being filtered by Muffin's
+    focus-stealing prevention, leaving the cycle target unraised even
+    though our own log said we had activated it. The Mutter API call
+    runs inside the WM process and is not subject to that filter.
+    Returns 1 if the actor was found, 0 otherwise.
+    """
+    return f"""\
+(function() {{
+    let actors = global.get_window_actors();
+    let actor = actors.find(a => a.meta_window.get_xwindow() === {xid});
+    if (!actor) return 0;
+    actor.meta_window.activate(global.get_current_time());
+    return 1;
 }})()"""
 
 
@@ -170,10 +202,14 @@ class CinnamonAnimator:
         Returns True if at least one actor was animated. Per-window misses
         (actor not found) are not a Cinnamon-down signal, so cached
         availability is left intact.
+
+        Batch animation never activates — BIGGER/SMALLER reshape the
+        layout without changing which window is on top. Single-window
+        tiles must use ``animate`` so the focused window comes forward.
         """
         if not self.is_available() or not targets:
             return False
-        val = self._invoke(_make_batch_script(targets))
+        val = self._invoke(_make_batch_script(targets, activate=False))
         if val is None:
             return False
         if val == "0":
@@ -182,5 +218,26 @@ class CinnamonAnimator:
         return True
 
     def animate(self, xid: int, tx: int, ty: int, tw: int, th: int) -> bool:
-        """Slide window to (tx, ty, tw, th) via Cinnamon compositor animation."""
-        return self.animate_batch([(xid, tx, ty, tw, th)])
+        """Slide window to (tx, ty, tw, th) via Cinnamon and raise it.
+
+        Tiling a single window must always leave it on top — we use
+        Mutter's mw.activate inside the JS rather than a follow-up X11
+        raise because Muffin's focus-stealing prevention drops third-
+        party ConfigureRequest stack changes silently.
+        """
+        if not self.is_available():
+            return False
+        val = self._invoke(_make_batch_script([(xid, tx, ty, tw, th)], activate=True))
+        return val is not None and val != "0"
+
+    def activate(self, xid: int) -> bool:
+        """Raise+focus a window via Mutter's mw.activate. Returns True
+        if Cinnamon found the actor and ran the call.
+
+        Used by the cycle action — the X11 _NET_ACTIVE_WINDOW path was
+        being filtered by Muffin and the cycle target stayed buried.
+        """
+        if not self.is_available():
+            return False
+        val = self._invoke(_make_activate_script(xid))
+        return val == "1"
