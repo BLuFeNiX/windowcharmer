@@ -656,19 +656,150 @@ def _cycle_wm() -> WindowManager:
     return wm
 
 
-def test_cycle_below_rotates_within_same_tile_zone() -> None:
-    """Stack (bottom→top) [W3, W2, W1] all in zone='left', focus=W1.
-    The cycle picks W3 (bottom-most same-zone below active), giving a
-    clean rotation through all three windows on repeated presses."""
+def test_cycle_below_first_press_activates_second_from_top() -> None:
+    """Alt-Tab semantics: a fresh chord press (no in-flight session)
+    activates the second-from-top window in the bucket — like releasing
+    Alt immediately after a single Alt+Tab. Going deeper requires
+    holding Super and pressing Tab again."""
+    wm = _cycle_wm()
+    w1, w2, w3 = MagicMock(id=0x1), MagicMock(id=0x2), MagicMock(id=0x3)
+    wm.props.list_windows.return_value = [w3, w2, w1]  # bottom→top stack
+    wm.props.get_active_window.return_value = w1
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._cycle_below()
+
+    # Bucket is [w1 (top), w2, w3]; cursor=1 → w2 (second from top).
+    wm.props.activate_window.assert_called_once_with(w2, ANY)
+
+
+def test_cycle_below_held_advances_cursor_through_snapshot() -> None:
+    """Held cycle: subsequent calls without an end_cycle_session() in
+    between (i.e. Super still down) advance the cursor through the
+    *snapshot* bucket — not the live stack. This is what makes
+    "hold Super, tap Tab repeatedly" walk progressively deeper rather
+    than ping-pong between the top two."""
     wm = _cycle_wm()
     w1, w2, w3 = MagicMock(id=0x1), MagicMock(id=0x2), MagicMock(id=0x3)
     wm.props.list_windows.return_value = [w3, w2, w1]
     wm.props.get_active_window.return_value = w1
 
     with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
-        wm._cycle_below()
+        wm._cycle_below()  # cursor=1 → w2
+        # Simulate the live stack reordering after the activate (w2 to top).
+        # _cycle_below MUST ignore this and walk the original snapshot.
+        wm.props.list_windows.return_value = [w3, w1, w2]
+        wm._cycle_below()  # cursor=2 → w3 (genuinely deeper, not w1)
 
-    wm.props.activate_window.assert_called_once_with(w3, ANY)
+    targets = [c.args[0] for c in wm.props.activate_window.call_args_list]
+    assert targets == [w2, w3]
+
+
+def test_cycle_below_held_cursor_wraps_through_original_top() -> None:
+    """Cursor wrap: after the deepest member, holding Super and tapping
+    again wraps to cursor=0 (the original-top, w1) — by this point in
+    the held cycle the original-top isn't visually on top any more
+    (the previous taps promoted deeper windows past it), so wrapping
+    through it is a real visual change and gives a full N-cycle."""
+    wm = _cycle_wm()
+    w1, w2, w3 = MagicMock(id=0x1), MagicMock(id=0x2), MagicMock(id=0x3)
+    wm.props.list_windows.return_value = [w3, w2, w1]
+    wm.props.get_active_window.return_value = w1
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._cycle_below()  # cursor=1 → w2
+        wm._cycle_below()  # cursor=2 → w3
+        wm._cycle_below()  # cursor=(2+1)%3=0 → w1
+
+    targets = [c.args[0] for c in wm.props.activate_window.call_args_list]
+    assert targets == [w2, w3, w1]
+
+
+def test_cycle_below_release_resets_session_to_top_two_toggle() -> None:
+    """Release-press behaviour: fully releasing Super (which calls
+    end_cycle_session) makes the next press start fresh, and "fresh"
+    always activates the second-from-top of the *current* stack —
+    so release-press-release-press just toggles between the two
+    front-most windows even with N>2 windows in the bucket."""
+    wm = _cycle_wm()
+    w1, w2, w3 = MagicMock(id=0x1), MagicMock(id=0x2), MagicMock(id=0x3)
+    wm.props.list_windows.return_value = [w3, w2, w1]
+    wm.props.get_active_window.return_value = w1
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._cycle_below()  # → w2
+
+        # Simulate Super release + the resulting stack reorder.
+        wm.end_cycle_session()
+        wm.props.list_windows.return_value = [w3, w1, w2]
+        wm.props.get_active_window.return_value = w2
+
+        wm._cycle_below()  # fresh session over [w2, w1, w3] → cursor=1 → w1
+
+        wm.end_cycle_session()
+        wm.props.list_windows.return_value = [w3, w2, w1]
+        wm.props.get_active_window.return_value = w1
+
+        wm._cycle_below()  # fresh session again → cursor=1 → w2
+
+    targets = [c.args[0] for c in wm.props.activate_window.call_args_list]
+    assert targets == [w2, w1, w2]
+
+
+def test_end_cycle_session_clears_state() -> None:
+    wm = _cycle_wm()
+    w1, w2 = MagicMock(id=0x1), MagicMock(id=0x2)
+    wm.props.list_windows.return_value = [w2, w1]
+    wm.props.get_active_window.return_value = w1
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._cycle_below()
+    assert wm._cycle_session is not None
+
+    wm.end_cycle_session()
+    assert wm._cycle_session is None
+    assert wm._cycle_cursor == 0
+
+
+def test_execute_action_non_cycle_ends_cycle_session(wm: WindowManager) -> None:
+    """Pressing Super+<anything-but-Tab> while a cycle session is in
+    flight ends it. The user has clearly moved on — a subsequent
+    Super+Tab should restart from second-from-top, not continue the
+    earlier deeper-walk."""
+    from windowcharmer.config.actions import TileAction
+
+    wm._cycle_session = [MagicMock(id=0x1), MagicMock(id=0x2)]
+    wm._cycle_cursor = 1
+    wm.props.get_active_window.return_value = MagicMock()
+    wm.props.get_workarea.return_value = (0, 40, 1920, 1000)
+    wm.props.get_gtk_frame_extents.return_value = None
+    wm.props.get_net_frame_extents.return_value = None
+    wm.props.is_window_maximized_vertically.return_value = False
+    wm.props.is_window_maximized_horizontally.return_value = False
+    wm.props.is_window_fullscreen.return_value = False
+    wm.props.list_windows.return_value = []
+
+    wm.execute_action(TileAction.LEFT)
+
+    assert wm._cycle_session is None
+
+
+def test_execute_action_cycle_preserves_session(wm: WindowManager) -> None:
+    """Inverse of the above: CYCLE itself must NOT clear the session.
+    The held-cycle deeper-walk depends on the snapshot persisting across
+    consecutive chord presses."""
+    from windowcharmer.config.actions import TileAction
+
+    pre_session = [MagicMock(id=0x1), MagicMock(id=0x2)]
+    wm._cycle_session = pre_session
+    wm._cycle_cursor = 1
+    wm.props.get_workarea.return_value = (0, 40, 1920, 1000)
+
+    with patch.object(wm, "_cycle_below"):
+        wm.execute_action(TileAction.CYCLE, timestamp=12345)
+
+    assert wm._cycle_session is pre_session
+    assert wm._cycle_cursor == 1
 
 
 def test_cycle_below_skips_different_zone_to_reach_same_zone() -> None:
@@ -802,10 +933,10 @@ def test_cycle_below_includes_same_zone_window_with_different_geometry() -> None
     with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="right"):
         wm._cycle_below()
 
-    # calc has different geometry than the terminals but is still tiled
-    # right — it must remain a valid cycle candidate. With "bottom-most"
-    # selection, calc (at idx 0) is the one activated.
-    wm.props.activate_window.assert_called_once_with(calc, ANY)
+    # All three windows are right-zone bucket members. Bucket top→bottom
+    # is [active, terminal, calc]; the alt-tab first press lands on
+    # cursor=1 → terminal. Held tap would advance to calc.
+    wm.props.activate_window.assert_called_once_with(terminal, ANY)
 
 
 def test_cycle_below_excludes_iconified_window() -> None:

@@ -35,9 +35,14 @@ class WindowCharmerApp:
         # Tracker watches the *physical* Super key — stable across the swap.
         # Where the Super_L keysym lives moves when we swap; the physical key
         # doesn't, and that's what the user actually presses.
+        # ``on_release`` ends any in-flight Super+Tab cycle session so the
+        # next chord press starts fresh — cycling deeper requires holding
+        # Super continuously across taps; releasing resets to "second-from-
+        # top" toggle behaviour.
         self.passthrough_tracker = SuperPassthroughTracker(
             self.mapper.physical_super_kc(),
             self.mapper.simulate_super_press,
+            on_release=self.wm.end_cycle_session,
         )
 
         # Sleep monitor lifecycle is owned by run_daemon() — it constructs the

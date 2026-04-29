@@ -37,6 +37,27 @@ def test_do_action_routes_tile_to_window_manager() -> None:
     app.input_manager.stop.assert_not_called()
 
 
+def test_super_release_ends_cycle_session() -> None:
+    """The cycle's "deeper on each held tap" behaviour relies on the
+    SuperPassthroughTracker calling wm.end_cycle_session every time
+    Super is released — bare-tap or held-with-key. App wires that up
+    at construction."""
+    with (
+        patch("windowcharmer.main.WindowManager"),
+        patch("windowcharmer.main.KeyboardMapper"),
+        patch("windowcharmer.main.InputManager"),
+        patch("windowcharmer.main.WakeFromSleepDetector"),
+        patch("windowcharmer.main.threading.Thread"),
+        patch("windowcharmer.main.SuperPassthroughTracker") as tracker_cls,
+        patch("windowcharmer.main.RebindScheduler"),
+        patch("windowcharmer.main.DisplayPool"),
+        patch("windowcharmer.main.load_keybindings", return_value={}),
+    ):
+        app = WindowCharmerApp()
+
+    assert tracker_cls.call_args.kwargs["on_release"] is app.wm.end_cycle_session
+
+
 def test_do_action_exit_short_circuits_to_stop() -> None:
     """EXIT must shut down the input manager loop and never reach the wm."""
     app = _make_app()

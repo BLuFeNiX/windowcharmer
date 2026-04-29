@@ -94,7 +94,9 @@ See [x11_coordinates.md](x11_coordinates.md) for why `abs()` is applied to trans
 
 Before issuing `XConfigureWindow`, `move_and_resize()` clears `_NET_WM_STATE_MAXIMIZED_*` and `_NET_WM_STATE_FULLSCREEN` because WMs ignore configure requests on maximized or fullscreen windows.
 
-`CYCLE` (Super+Tab by default) bypasses `_TILE_SPEC`: it raises another window in the focused window's zone bucket (same tile zone, or both classified `unknown` for floating). Tile actions also raise the focused window after committing, so a freshly-tiled window lands on top of any existing same-zone tile. Both paths route their raise through the same activation primitive — see [wm_interactions.md](wm_interactions.md) for the focus-stealing / timestamping / buffering pitfalls that make raising a window on Mutter / Muffin / KWin much harder than the EWMH spec suggests.
+`CYCLE` (Super+Tab by default) bypasses `_TILE_SPEC` and implements alt-tab semantics over the focused window's zone bucket (same tile zone, or both classified `unknown` for floating). A fresh chord press activates the second-from-top bucket member; while Super is held, repeated Tab presses walk the cursor deeper through a snapshot taken at session start; releasing Super (or pressing any non-CYCLE chord) ends the session so the next press starts fresh. The session is held in `WindowManager._cycle_session` and ended via `end_cycle_session`, which `SuperPassthroughTracker.on_release` calls on every Super release.
+
+Tile actions also raise the focused window after committing, so a freshly-tiled window lands on top of any existing same-zone tile. Both paths route their raise through the same activation primitive — see [wm_interactions.md](wm_interactions.md) for the focus-stealing / timestamping / buffering pitfalls that make raising a window on Mutter / Muffin / KWin much harder than the EWMH spec suggests.
 
 ### Screen dimensions (`config/dimensions.py`)
 

@@ -106,6 +106,19 @@ class WindowManager:
         # snapshotted, vanished ids get pruned.
         self._spawn_geom: dict[int, tuple[int, int, int, int]] = {}
 
+        # Super+Tab cycle session state. ``_cycle_session`` is the bucket
+        # snapshotted at the first chord press while Super is held — a
+        # list ordered top-to-bottom of stacking. ``_cycle_cursor`` is
+        # the position currently on top after the most recent cycle
+        # press. Held repeats advance the cursor through the *snapshot*
+        # (not the live stack, which reorders after every activate);
+        # this is what makes "hold Super, tap Tab repeatedly" walk
+        # progressively deeper rather than ping-pong between two
+        # windows. Both cleared by ``end_cycle_session`` on Super
+        # release or any non-CYCLE action.
+        self._cycle_session: list[Window] | None = None
+        self._cycle_cursor: int = 0
+
     def _update_state(self) -> None:
         """Refresh screen layout from X server. Uses _NET_WORKAREA for panel-aware geometry."""
         active_desktop = self.props.get_active_desktop()
@@ -272,6 +285,11 @@ class WindowManager:
         invocations always pass the real time.
         """
         logger.debug("execute_action: %s (time=%d)", action, timestamp)
+        # Any non-CYCLE action ends an in-flight cycle session: the user
+        # has clearly moved on (tile, max, restore, …) and a subsequent
+        # CYCLE press should start fresh.
+        if action != TileAction.CYCLE:
+            self.end_cycle_session()
         try:
             # Read state before grabbing the server to minimise the held window.
             self._update_state()
@@ -458,9 +476,28 @@ class WindowManager:
         ):
             self.move_and_resize(win, x, y, w, h)
 
+    def end_cycle_session(self) -> None:
+        """Clear the in-flight Super+Tab cycle session.
+
+        Called from the SuperPassthroughTracker on Super release — that
+        ends a "held" cycle and makes the next chord press start a
+        fresh session. Also called at the top of ``execute_action``
+        for any non-CYCLE action: pressing Super+Right or Super+Up
+        while held mid-cycle is the user moving on, not continuing.
+        """
+        self._cycle_session = None
+        self._cycle_cursor = 0
+
     def _cycle_below(self, timestamp: int = X.CurrentTime) -> None:
-        """Activate the bottom-most window in the focused window's bucket
-        that is stacked below the top-most window in that bucket.
+        """Alt-Tab semantics for the focused window's bucket.
+
+        First chord press (no in-flight session) activates the
+        second-from-top window in the bucket — like releasing Alt
+        immediately after a single Alt+Tab. Continued presses while
+        Super is still held advance one position deeper into the
+        bucket on each press, walking the snapshot taken at session
+        start. Releasing Super clears the session so the next press
+        starts fresh.
 
         Bucket membership requires:
 
@@ -478,70 +515,66 @@ class WindowManager:
             invisible to the user.
           * Same desktop (or sticky).
 
-        Anchor choice — we anchor on the top-most same-bucket window in
-        ``_NET_CLIENT_LIST_STACKING``, NOT on ``_NET_ACTIVE_WINDOW``,
-        because Muffin lags the active-window property after our
-        activate while updating the stacking property promptly. The
-        stack is the reliable signal for "what is on top in this zone
-        right now".
+        Why the held cycle walks a snapshot and not the live stack —
+        every press activates immediately, and Mutter reorders the
+        stack on each activate. Recomputing "second-from-top" from
+        the live stack on every held press would just ping-pong
+        between the two front-most windows; freezing the bucket at
+        session start so the cursor advances through it gives a
+        cursor that reaches genuinely deeper windows on each tap.
 
-        Each press rotates the bucket by one (bottom-most below the
-        anchor comes to the top), so N presses cycle through all N
-        windows in the bucket and return to the starting window.
+        Cursor wrap: ``cursor`` advances modulo ``len(session)``.
+        After the deepest member, wrap-to-0 reactivates the original-
+        top — it isn't currently on top of the stack any more (the
+        held cycle has been promoting deeper windows past it), so
+        bringing it forward is a real visual change and the bucket's
+        full N-cycle stays intact.
         """
-        active = self.props.get_active_window()
-        if active is None:
-            logger.debug("CYCLE: no active window — skipping")
-            return
+        if self._cycle_session is None:
+            active = self.props.get_active_window()
+            if active is None:
+                logger.debug("CYCLE: no active window — skipping")
+                return
+            try:
+                active_zone = determine_tile_zone(active, self.dim, self.props.is_window_maximized_vertically(active))
+            except (BadWindow, BadDrawable) as e:
+                logger.debug("CYCLE: active window vanished while reading zone: %s", e)
+                return
 
-        try:
-            active_zone = determine_tile_zone(active, self.dim, self.props.is_window_maximized_vertically(active))
-        except (BadWindow, BadDrawable) as e:
-            logger.debug("CYCLE: active window vanished while reading zone: %s", e)
-            return
-
-        stack = self.props.list_windows()
-        anchor_idx = -1
-        for i in range(len(stack) - 1, -1, -1):
-            if self._is_cycle_target(stack[i], active_zone):
-                anchor_idx = i
-                break
-
-        logger.debug(
-            "CYCLE: active=0x%x zone=%r stack_size=%d anchor_idx=%d",
-            active.id,
-            active_zone,
-            len(stack),
-            anchor_idx,
-        )
-        if anchor_idx <= 0:
-            logger.debug("CYCLE: no same-bucket anchor with anything below it — no-op")
-            return
-
-        # stack[:anchor_idx] is bottom→top of windows below the anchor.
-        # Iterating from the start picks the bottom-most match, giving
-        # the rotation behaviour described above.
-        for candidate in stack[:anchor_idx]:
-            if not self._is_cycle_target(candidate, active_zone):
-                continue
+            stack = self.props.list_windows()
+            bucket = [w for w in reversed(stack) if self._is_cycle_target(w, active_zone)]
+            if len(bucket) <= 1:
+                logger.debug("CYCLE: bucket has %d window(s) — nothing to cycle", len(bucket))
+                return
+            self._cycle_session = bucket
+            self._cycle_cursor = 1
             logger.debug(
-                "CYCLE: activating 0x%x (anchor=0x%x, active=0x%x, zone=%r)",
-                candidate.id,
-                stack[anchor_idx].id,
-                active.id,
+                "CYCLE: new session of %d window(s), cursor=1, zone=%r",
+                len(bucket),
                 active_zone,
             )
-            # Prefer Mutter's mw.activate (via the Cinnamon animator)
-            # over the X11 EWMH path: it runs inside the WM process so
-            # focus-stealing prevention does not apply. The X11 fallback
-            # passes the chord's X server timestamp so Mutter / Muffin /
-            # KWin treat the request as a recent user gesture rather
-            # than dropping it as focus-stealing.
-            if not self.animator.activate(candidate.id):
-                self.props.activate_window(candidate, timestamp)
-            return
+        else:
+            self._cycle_cursor = (self._cycle_cursor + 1) % len(self._cycle_session)
+            logger.debug(
+                "CYCLE: continued session, cursor=%d/%d",
+                self._cycle_cursor,
+                len(self._cycle_session) - 1,
+            )
 
-        logger.debug("CYCLE: no same-bucket candidate in stack[:%d]", anchor_idx)
+        target = self._cycle_session[self._cycle_cursor]
+        logger.debug("CYCLE: activating 0x%x", target.id)
+        # Prefer Mutter's mw.activate (via the Cinnamon animator) over
+        # the X11 EWMH path: it runs inside the WM process so focus-
+        # stealing prevention does not apply. The X11 fallback passes
+        # the chord's X server timestamp so Mutter / Muffin / KWin
+        # treat the request as a recent user gesture rather than
+        # dropping it as focus-stealing. Suppress BadWindow/BadDrawable
+        # in case the session contains a window that's been closed
+        # mid-cycle — better than exploding execute_action's outer
+        # error handler with a stack trace.
+        if not self.animator.activate(target.id):
+            with contextlib.suppress(BadWindow, BadDrawable):
+                self.props.activate_window(target, timestamp)
 
     def _is_cycle_target(self, window: Window, target_zone: str) -> bool:
         """True when `window` belongs in the active window's cycle bucket.

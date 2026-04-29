@@ -74,7 +74,7 @@ For automatic startup on login, add `windowcharmer` to your desktop environment'
 | `Left` | `left` — left column |
 | `Right` | `right` — right column |
 | `space` | `restore` — unmaximize |
-| `Tab` | `cycle` — raise the next window stacked below the focused one in the same zone (or, if the focused window is floating, the next floating window) |
+| `Tab` | `cycle` — alt-tab among same-zone (or same-floating-bucket) windows: tap once for second-from-top, hold Super and tap again to walk deeper |
 | Numpad `7` (`KP_Home`) | `top-left` |
 | Numpad `8` (`KP_Up`) | `top-center` |
 | Numpad `9` (`KP_Page_Up`) | `top-right` |

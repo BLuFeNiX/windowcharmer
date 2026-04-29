@@ -72,3 +72,33 @@ def test_unrelated_key_events_ignored() -> None:
     tracker.handle_event(X.KeyPress, 36)
     tracker.handle_event(X.KeyRelease, 36)
     cb.assert_not_called()
+
+
+def test_on_release_fires_for_every_super_release() -> None:
+    """The Super+Tab cycle uses ``on_release`` to end its session
+    so subsequent presses start fresh. It must fire on EVERY Super
+    release — bare-tap and held-with-key — not just the bare-tap
+    case that triggers the menu passthrough."""
+    cb = MagicMock()
+    on_release = MagicMock()
+    tracker = SuperPassthroughTracker(_SUPER, cb, on_release=on_release)
+
+    # Held with key — bare-tap suppressed, on_release must still fire.
+    tracker.handle_event(X.KeyPress, _SUPER)
+    tracker.handle_event(X.KeyPress, 36)
+    tracker.handle_event(X.KeyRelease, _SUPER)
+    cb.assert_not_called()
+    assert on_release.call_count == 1
+
+    # Bare tap — both fire.
+    tracker.handle_event(X.KeyPress, _SUPER)
+    tracker.handle_event(X.KeyRelease, _SUPER)
+    assert cb.call_count == 1
+    assert on_release.call_count == 2
+
+
+def test_on_release_optional() -> None:
+    """Tracker works without an on_release callback (legacy / minimal callers)."""
+    tracker = SuperPassthroughTracker(_SUPER, MagicMock())  # no on_release
+    tracker.handle_event(X.KeyPress, _SUPER)
+    tracker.handle_event(X.KeyRelease, _SUPER)  # must not raise

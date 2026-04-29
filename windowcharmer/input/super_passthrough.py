@@ -28,9 +28,19 @@ class SuperPassthroughTracker:
     # Handles the case where a focus change consumes the KeyRelease event.
     _SUPER_TIMEOUT: ClassVar[float] = 5.0
 
-    def __init__(self, super_keycode: int, on_passthrough: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        super_keycode: int,
+        on_passthrough: Callable[[], None],
+        on_release: Callable[[], None] | None = None,
+    ) -> None:
         self.super_keycode = super_keycode
         self.on_passthrough = on_passthrough
+        # Fires on every Super release (regardless of bare-tap vs.
+        # held-with-key). Used to end any in-flight Super+Tab cycle
+        # session — the cycle's "deeper on each held tap" behaviour
+        # depends on knowing when the chord is fully released.
+        self.on_release = on_release
         self.super_pressed: bool = False
         self.key_pressed_while_super_down: bool = False
         self._super_press_time: float = 0.0
@@ -69,3 +79,5 @@ class SuperPassthroughTracker:
                 logger.debug("Forwarding bare Super tap as Hyper_L")
                 self.on_passthrough()
             self.key_pressed_while_super_down = False
+            if self.on_release is not None:
+                self.on_release()
