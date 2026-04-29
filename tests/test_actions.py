@@ -21,5 +21,8 @@ def test_tile_spec_covers_all_dispatch_actions() -> None:
         TileAction.EXIT,
         TileAction.RESTORE,  # restored to spawn geometry, not via _TILE_SPEC
         TileAction.CYCLE,  # raises another window; doesn't touch the focused one's geometry
+        TileAction.FOCUS_LEFT,  # focuses an existing tiled window; no geometry change
+        TileAction.FOCUS_RIGHT,
+        TileAction.FOCUS_CENTER,
     }
     assert set(_TILE_SPEC) | handled_outside_spec == set(TileAction)

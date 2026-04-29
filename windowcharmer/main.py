@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class WindowCharmerApp:
     def __init__(self, no_animate: bool = False) -> None:
         self.wm = WindowManager(no_animate=no_animate)
-        self.key_bindings = load_keybindings()
+        self.key_bindings, self.shift_key_bindings = load_keybindings()
 
         self.mapper = KeyboardMapper()
         self.input_dpy: Display = DisplayPool.get_display("input")
@@ -53,7 +53,8 @@ class WindowCharmerApp:
 
         self.input_manager = InputManager(
             self.input_dpy,
-            key_actions=self._setup_key_bindings(),
+            key_actions=self._setup_key_bindings(self.key_bindings),
+            shift_key_actions=self._setup_key_bindings(self.shift_key_bindings),
             passthrough_tracker=self.passthrough_tracker,
             on_keymap_change=self._on_keymap_change,
             on_keyboard_hotplug=self.rebind_scheduler.schedule,
@@ -77,8 +78,8 @@ class WindowCharmerApp:
             return
         self.wm.execute_action(action, timestamp)
 
-    def _setup_key_bindings(self) -> dict[str, Callable[[int], None]]:
-        return {key: functools.partial(self.do_action, action) for key, action in self.key_bindings.items()}
+    def _setup_key_bindings(self, bindings: dict[str, TileAction]) -> dict[str, Callable[[int], None]]:
+        return {key: functools.partial(self.do_action, action) for key, action in bindings.items()}
 
     def _on_keymap_change(self) -> None:
         """Run on every MappingNotify(Keyboard) the InputManager sees.

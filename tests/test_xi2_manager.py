@@ -59,19 +59,36 @@ def _make_dpy(xtest_atom: int = 289) -> MagicMock:
     return dpy
 
 
-def _xi2_key_event(evtype: int, keycode: int, sourceid: int, deviceid: int | None = None) -> MagicMock:
+def _xi2_key_event(
+    evtype: int,
+    keycode: int,
+    sourceid: int,
+    deviceid: int | None = None,
+    effective_mods: int = 0,
+) -> MagicMock:
     """Synthesize an XI2 GenericEvent for any KeyPress/KeyRelease/RawKey* evtype.
 
     For raw events, deviceid defaults to sourceid (slave-originated, what
     we keep). Pass an explicit deviceid != sourceid to simulate a master
     echo (which the manager filters out).
+
+    ``effective_mods`` is the modifier bitmask the X server reports on
+    the event; the dispatcher uses its Shift bit to pick between the
+    Mod4 and Mod4+Shift keycode tables. Raw events don't go through
+    the dispatcher so ``mods`` only matters for KeyPress events.
     """
     event = MagicMock()
     event.type = GenericEventCode
     event.evtype = evtype
     if deviceid is None:
         deviceid = sourceid
-    event.data = SimpleNamespace(detail=keycode, sourceid=sourceid, deviceid=deviceid, time=12345)
+    event.data = SimpleNamespace(
+        detail=keycode,
+        sourceid=sourceid,
+        deviceid=deviceid,
+        time=12345,
+        mods=SimpleNamespace(effective_mods=effective_mods),
+    )
     return event
 
 
@@ -184,6 +201,40 @@ def test_real_keypress_at_grabbed_keycode_invokes_action() -> None:
     # downstream EWMH activate messages carry a recent server timestamp.
     action.assert_called_once_with(12345)
     tracker.handle_event.assert_not_called()  # regular KeyPress doesn't go to tracker
+
+
+def test_shift_chord_dispatches_to_shift_table() -> None:
+    """A KeyPress with the Shift bit set in effective_mods looks up the
+    keycode in ``_shift_keycode_actions``, not the plain ``_keycode_actions``.
+    This is how Super+Shift+Left gets routed to FOCUS_LEFT instead of
+    Super+Left's LEFT action sharing the same keycode."""
+    plain_action = MagicMock()
+    shift_action = MagicMock()
+    mgr, _, _, _, _ = _make_manager()
+    mgr._xtest_devices = frozenset({_XTEST_KBD_ID})
+    mgr._keycode_actions = {100: plain_action}
+    mgr._shift_keycode_actions = {100: shift_action}
+
+    mgr._handle_event(_xi2_key_event(xinput.KeyPress, keycode=100, sourceid=_REAL_KBD_ID, effective_mods=X.ShiftMask))
+
+    shift_action.assert_called_once_with(12345)
+    plain_action.assert_not_called()
+
+
+def test_no_shift_chord_dispatches_to_plain_table() -> None:
+    """The inverse: an event with no Shift bit hits the plain table even
+    when the same keycode is also registered in the shift table."""
+    plain_action = MagicMock()
+    shift_action = MagicMock()
+    mgr, _, _, _, _ = _make_manager()
+    mgr._xtest_devices = frozenset({_XTEST_KBD_ID})
+    mgr._keycode_actions = {100: plain_action}
+    mgr._shift_keycode_actions = {100: shift_action}
+
+    mgr._handle_event(_xi2_key_event(xinput.KeyPress, keycode=100, sourceid=_REAL_KBD_ID, effective_mods=0))
+
+    plain_action.assert_called_once_with(12345)
+    shift_action.assert_not_called()
 
 
 def test_real_raw_keypress_reaches_tracker() -> None:

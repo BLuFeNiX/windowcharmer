@@ -784,6 +784,149 @@ def test_execute_action_non_cycle_ends_cycle_session(wm: WindowManager) -> None:
     assert wm._cycle_session is None
 
 
+def test_focus_tiled_picks_top_most_zone_match() -> None:
+    """``_focus_tiled`` walks the stack top-to-bottom and activates the
+    first NORMAL+viewable+on-desktop window whose classified zone
+    string contains the substring. Top-most match wins so the user
+    lands on whichever same-side tile is currently visible above the
+    others."""
+    wm = _cycle_wm()
+    bottom_left = MagicMock(id=0xB1)
+    middle_other = MagicMock(id=0xC2)
+    top_left = MagicMock(id=0xA3)
+    wm.props.list_windows.return_value = [bottom_left, middle_other, top_left]  # bottom→top
+
+    def zone_for(win: object, *_: object, **__: object) -> str:
+        if win is middle_other:
+            return "right"
+        return "left"  # bottom_left and top_left are both left-zoned
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", side_effect=zone_for):
+        wm._focus_tiled("left", timestamp=12345)
+
+    wm.props.activate_window.assert_called_once_with(top_left, ANY)
+
+
+def test_focus_tiled_substring_includes_left_center_and_corners() -> None:
+    """``"left"`` substring must match left-center (full-height span),
+    top-left and bottom-left (corner tiles), as well as left itself.
+    The user thinks of all of these as "tiled to the left" — the
+    focus action shouldn't care about height or whether the tile
+    extends into the centre column."""
+    wm = _cycle_wm()
+    left_center = MagicMock(id=0x1)
+    top_left = MagicMock(id=0x2)
+    plain_left = MagicMock(id=0x3)
+    irrelevant = MagicMock(id=0xD)  # right-tiled, must be ignored
+    # Stack bottom-to-top: irrelevant, left-center, top-left, plain_left.
+    wm.props.list_windows.return_value = [irrelevant, left_center, top_left, plain_left]
+
+    zones = {left_center: "left-center", top_left: "top-left", plain_left: "left", irrelevant: "right"}
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", side_effect=lambda w, *a, **k: zones[w]):
+        wm._focus_tiled("left", timestamp=0)
+
+    wm.props.activate_window.assert_called_once_with(plain_left, ANY)
+
+
+def test_focus_tiled_center_includes_spanning_tiles() -> None:
+    """``"center"`` matches center, left-center, right-center, top-center,
+    bottom-center — every tile that touches the centre column."""
+    wm = _cycle_wm()
+    win_left_center = MagicMock(id=0x1)
+    win_right_center = MagicMock(id=0x2)
+    win_pure_left = MagicMock(id=0x3)
+    wm.props.list_windows.return_value = [win_pure_left, win_left_center, win_right_center]
+
+    zones = {win_left_center: "left-center", win_right_center: "right-center", win_pure_left: "left"}
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", side_effect=lambda w, *a, **k: zones[w]):
+        wm._focus_tiled("center", timestamp=0)
+
+    # win_right_center is at idx 2 (top-most), and right-center contains "center".
+    wm.props.activate_window.assert_called_once_with(win_right_center, ANY)
+
+
+def test_focus_tiled_excludes_floating_windows_in_zone_area() -> None:
+    """A window classified as containing ``"unknown"`` (floating /
+    unclassifiable) must not satisfy a focus action even if its zone
+    string happens to contain the substring (e.g. ``"unknown-left"``).
+    The user means "another window I tiled here", not "any window
+    near the left side"."""
+    wm = _cycle_wm()
+    real_left = MagicMock(id=0x1)
+    floating_at_left = MagicMock(id=0x2)
+    wm.props.list_windows.return_value = [real_left, floating_at_left]
+
+    zones = {real_left: "left", floating_at_left: "unknown-left"}
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", side_effect=lambda w, *a, **k: zones[w]):
+        wm._focus_tiled("left", timestamp=0)
+
+    wm.props.activate_window.assert_called_once_with(real_left, ANY)
+
+
+def test_focus_tiled_no_match_is_noop() -> None:
+    """If no window matches, no activate call fires."""
+    wm = _cycle_wm()
+    win = MagicMock(id=0x1)
+    wm.props.list_windows.return_value = [win]
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="right"):
+        wm._focus_tiled("left", timestamp=0)
+
+    wm.props.activate_window.assert_not_called()
+
+
+def test_focus_tiled_skips_other_desktop() -> None:
+    wm = _cycle_wm()
+    other_desk = MagicMock(id=0x1)
+    same_desk = MagicMock(id=0x2)
+    # Stack puts other_desk on top — but it should be skipped.
+    wm.props.list_windows.return_value = [same_desk, other_desk]
+
+    def desk_for(win: object) -> int:
+        return 99 if win is other_desk else 0
+
+    wm.props.get_window_desktop.side_effect = desk_for
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._focus_tiled("left", timestamp=0)
+
+    wm.props.activate_window.assert_called_once_with(same_desk, ANY)
+
+
+def test_focus_tiled_prefers_animator_when_available() -> None:
+    """Same activation routing as cycle: animator first, X11 fallback."""
+    wm = _cycle_wm()
+    win = MagicMock(id=0x99)
+    wm.props.list_windows.return_value = [win]
+    wm.animator.activate.return_value = True  # animator handles it
+
+    with patch("windowcharmer.tiling.manager.determine_tile_zone", return_value="left"):
+        wm._focus_tiled("left", timestamp=0)
+
+    wm.animator.activate.assert_called_once_with(win.id)
+    wm.props.activate_window.assert_not_called()
+
+
+def test_execute_action_routes_focus_actions(wm: WindowManager) -> None:
+    """Each FOCUS_* action dispatches to _focus_tiled with the right substring."""
+    from windowcharmer.config.actions import TileAction
+
+    wm.props.get_workarea.return_value = (0, 40, 1920, 1000)
+
+    cases = {
+        TileAction.FOCUS_LEFT: "left",
+        TileAction.FOCUS_RIGHT: "right",
+        TileAction.FOCUS_CENTER: "center",
+    }
+    for action, substring in cases.items():
+        with patch.object(wm, "_focus_tiled") as focus:
+            wm.execute_action(action, timestamp=42)
+        focus.assert_called_once_with(substring, 42)
+
+
 def test_execute_action_cycle_preserves_session(wm: WindowManager) -> None:
     """Inverse of the above: CYCLE itself must NOT clear the session.
     The held-cycle deeper-walk depends on the snapshot persisting across

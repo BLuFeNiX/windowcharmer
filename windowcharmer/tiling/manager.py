@@ -89,6 +89,21 @@ _TILE_SPEC: dict[TileAction, _ZoneSpec] = {
 # that returns a window to its captured spawn geometry.
 
 
+# FOCUS_LEFT / FOCUS_RIGHT / FOCUS_CENTER each map to a substring that the
+# target window's classified zone string must contain. Substring matching
+# means a left-tile counts as "left" whether it's full-height ("left"),
+# spans into center ("left-center"), or is half-height ("top-left",
+# "bottom-left"). "right" likewise covers "right", "right-center",
+# "top-right", "bottom-right". "center" is anything that occupies the
+# centre column at all: "center", "left-center", "right-center",
+# "top-center", "bottom-center". See _focus_tiled for the full filter.
+_FOCUS_TARGETS: dict[TileAction, str] = {
+    TileAction.FOCUS_LEFT: "left",
+    TileAction.FOCUS_RIGHT: "right",
+    TileAction.FOCUS_CENTER: "center",
+}
+
+
 class WindowManager:
     def __init__(self, no_animate: bool = False) -> None:
         """Initializes the WindowManager with its own X11 display connection."""
@@ -311,6 +326,10 @@ class WindowManager:
                 self._cycle_below(timestamp)
                 return
 
+            if action in _FOCUS_TARGETS:
+                self._focus_tiled(_FOCUS_TARGETS[action], timestamp)
+                return
+
             win = self.props.get_active_window()
             if win is None:
                 return
@@ -476,6 +495,73 @@ class WindowManager:
         ):
             self.move_and_resize(win, x, y, w, h)
 
+    def _focus_tiled(self, zone_substring: str, timestamp: int = X.CurrentTime) -> None:
+        """Activate the front-most tiled window whose zone contains
+        ``zone_substring``.
+
+        "Front-most" means the top-most window in
+        ``_NET_CLIENT_LIST_STACKING`` that satisfies all the same
+        filters cycle uses (NORMAL, viewable, on the active desktop
+        or sticky) plus the substring match. Substring matching folds
+        related variants together — see ``_FOCUS_TARGETS`` for the
+        rationale. Floating / unclassifiable windows (zone contains
+        ``"unknown"``) are excluded so a stray dialog at the right of
+        the screen can't be picked as "the front-most right tile".
+
+        No-op if no matching window exists. The active window itself
+        is eligible — focusing the already-focused window is a cheap
+        no-op for the WM and avoids special-casing.
+        """
+        stack = self.props.list_windows()
+        for win in reversed(stack):
+            if not self._is_focus_target(win, zone_substring):
+                continue
+            logger.debug("FOCUS %r: activating 0x%x", zone_substring, win.id)
+            if self.animator.activate(win.id):
+                return
+            with contextlib.suppress(BadWindow, BadDrawable):
+                self.props.activate_window(win, timestamp)
+            return
+        logger.debug("FOCUS %r: no matching tiled window found", zone_substring)
+
+    def _is_focus_target(self, window: Window, zone_substring: str) -> bool:
+        """True when ``window`` is a tiled candidate for a focus action.
+
+        Shares the visibility filter with cycle (NORMAL + viewable +
+        same-desktop) but differs on zone policy: substring containment
+        rather than exact match, and ``"unknown"`` zones are excluded
+        outright. Focus actions only target real tiles — a stray
+        floating dialog at the right edge must not be picked as "the
+        front-most right tile".
+        """
+        zone = self._classify_visible_normal_window(window)
+        if zone is None or "unknown" in zone:
+            return False
+        return zone_substring in zone
+
+    def _classify_visible_normal_window(self, window: Window) -> str | None:
+        """Return the zone string for a window IF it passes the shared
+        visibility filter (NORMAL window type, currently mapped/viewable,
+        and on the active desktop or sticky). Returns None otherwise,
+        including on BadWindow / BadDrawable.
+
+        Shared by the cycle bucket check and the focus actions because
+        both walk ``_NET_CLIENT_LIST_STACKING`` for visible user
+        windows; the only thing that varies between them is what they
+        do with the resulting zone string.
+        """
+        try:
+            if not self.props.is_normal_window(window):
+                return None
+            if not self.props.is_viewable_window(window):
+                return None
+            desktop = self.props.get_window_desktop(window)
+            if desktop != self.config.active_desktop and desktop != ALL_DESKTOPS:
+                return None
+            return determine_tile_zone(window, self.dim, self.props.is_window_maximized_vertically(window))
+        except (BadWindow, BadDrawable):
+            return None
+
     def end_cycle_session(self) -> None:
         """Clear the in-flight Super+Tab cycle session.
 
@@ -579,38 +665,20 @@ class WindowManager:
     def _is_cycle_target(self, window: Window, target_zone: str) -> bool:
         """True when `window` belongs in the active window's cycle bucket.
 
-        Filters applied (in order, cheapest first):
-
-          1. ``_NET_WM_WINDOW_TYPE_NORMAL`` (or unset) — exclude
-             dialogs, dock, menu, notification, tooltip, splash.
-          2. ``map_state == IsViewable`` — exclude iconified /
-             withdrawn windows that are still in the stacking list
-             but invisible to the user.
-          3. Same desktop or sticky.
-          4. Same zone bucket: tile zones match by exact string
-             (``"left"`` matches ``"left"`` but not ``"left-center"``);
-             any zone containing ``"unknown"`` shares one floating
-             bucket with all other unknown shapes. The 128 px
-             ``_ZONE_DEVIATION`` is intentionally loose so that
-             cross-app frame-extents differences (a calculator
-             whose decoration is 84 px taller than a terminal's,
-             for example) still count as "the same tile" — these
-             are real windows the user has placed in the same zone,
-             just rendered at slightly different shapes.
-
-        Sticky windows (_NET_WM_DESKTOP == ALL_DESKTOPS) qualify on
-        every desktop. Windows that vanish mid-check are excluded.
+        Shared visibility filter (NORMAL + viewable + same-desktop) is
+        in ``_classify_visible_normal_window``. Zone policy here: tile
+        zones match by exact string (``"left"`` matches ``"left"`` but
+        not ``"left-center"``); any zone containing ``"unknown"``
+        shares one floating bucket with all other unknown shapes. The
+        128 px ``_ZONE_DEVIATION`` is intentionally loose so that
+        cross-app frame-extents differences (a calculator whose
+        decoration is 84 px taller than a terminal's, for example)
+        still count as "the same tile" — these are real windows the
+        user has placed in the same zone, just rendered at slightly
+        different shapes.
         """
-        try:
-            if not self.props.is_normal_window(window):
-                return False
-            if not self.props.is_viewable_window(window):
-                return False
-            desktop = self.props.get_window_desktop(window)
-            if desktop != self.config.active_desktop and desktop != ALL_DESKTOPS:
-                return False
-            zone = determine_tile_zone(window, self.dim, self.props.is_window_maximized_vertically(window))
-        except (BadWindow, BadDrawable):
+        zone = self._classify_visible_normal_window(window)
+        if zone is None:
             return False
         if "unknown" in target_zone:
             return "unknown" in zone

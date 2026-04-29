@@ -98,6 +98,8 @@ Before issuing `XConfigureWindow`, `move_and_resize()` clears `_NET_WM_STATE_MAX
 
 Tile actions also raise the focused window after committing, so a freshly-tiled window lands on top of any existing same-zone tile. Both paths route their raise through the same activation primitive — see [wm_interactions.md](wm_interactions.md) for the focus-stealing / timestamping / buffering pitfalls that make raising a window on Mutter / Muffin / KWin much harder than the EWMH spec suggests.
 
+`FOCUS_LEFT` / `FOCUS_RIGHT` / `FOCUS_CENTER` (Super+Shift+Left/Right/Down by default) walk `_NET_CLIENT_LIST_STACKING` top-to-bottom and activate the first window whose classified zone string contains the named substring (`"left"` / `"right"` / `"center"`). Substring matching folds related variants together: `"left"` covers `left`, `left-center`, `top-left`, `bottom-left`; `"center"` covers anything that touches the centre column. Floating / unclassifiable windows (zone contains `"unknown"`) are excluded so a stray dialog at the right edge can't be picked as "the front-most right tile". The `InputManager` registers a separate Mod4+Shift passive grab for these chords and dispatches by the Shift bit in the event's effective modifier mask.
+
 ### Screen dimensions (`config/dimensions.py`)
 
 `ScreenDimensions` computes all zone geometry from the workarea rectangle (`_NET_WORKAREA`) and `center_width`. Workarea values account for panels and docks.

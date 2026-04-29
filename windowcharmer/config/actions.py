@@ -18,4 +18,7 @@ class TileAction(StrEnum):
     BIGGER = "bigger"
     SMALLER = "smaller"
     CYCLE = "cycle"
+    FOCUS_LEFT = "focus-left"
+    FOCUS_RIGHT = "focus-right"
+    FOCUS_CENTER = "focus-center"
     EXIT = "exit"

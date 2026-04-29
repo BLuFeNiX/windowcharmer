@@ -22,7 +22,7 @@ def _make_app() -> WindowCharmerApp:
         patch("windowcharmer.main.SuperPassthroughTracker"),
         patch("windowcharmer.main.RebindScheduler"),
         patch("windowcharmer.main.DisplayPool"),
-        patch("windowcharmer.main.load_keybindings", return_value={}),
+        patch("windowcharmer.main.load_keybindings", return_value=({}, {})),
     ):
         return WindowCharmerApp()
 
@@ -51,7 +51,7 @@ def test_super_release_ends_cycle_session() -> None:
         patch("windowcharmer.main.SuperPassthroughTracker") as tracker_cls,
         patch("windowcharmer.main.RebindScheduler"),
         patch("windowcharmer.main.DisplayPool"),
-        patch("windowcharmer.main.load_keybindings", return_value={}),
+        patch("windowcharmer.main.load_keybindings", return_value=({}, {})),
     ):
         app = WindowCharmerApp()
 
@@ -92,7 +92,7 @@ def test_hotplug_and_sleep_route_through_rebind_scheduler() -> None:
         patch("windowcharmer.main.SuperPassthroughTracker"),
         patch("windowcharmer.main.RebindScheduler") as scheduler_cls,
         patch("windowcharmer.main.DisplayPool"),
-        patch("windowcharmer.main.load_keybindings", return_value={}),
+        patch("windowcharmer.main.load_keybindings", return_value=({}, {})),
     ):
         thread_cls.return_value.is_alive.return_value = False
         app = WindowCharmerApp()
@@ -125,7 +125,7 @@ def test_run_daemon_drains_scheduler_before_mapper_cleanup() -> None:
         patch("windowcharmer.main.SuperPassthroughTracker"),
         patch("windowcharmer.main.RebindScheduler") as scheduler_cls,
         patch("windowcharmer.main.DisplayPool"),
-        patch("windowcharmer.main.load_keybindings", return_value={}),
+        patch("windowcharmer.main.load_keybindings", return_value=({}, {})),
     ):
         event_cls.return_value.set.side_effect = lambda: order.append("stop_event")
         thread_cls.return_value.join.side_effect = lambda timeout: order.append("sleep_join")
@@ -152,7 +152,7 @@ def test_run_daemon_warns_when_sleep_thread_does_not_exit() -> None:
         patch("windowcharmer.main.SuperPassthroughTracker"),
         patch("windowcharmer.main.RebindScheduler"),
         patch("windowcharmer.main.DisplayPool"),
-        patch("windowcharmer.main.load_keybindings", return_value={}),
+        patch("windowcharmer.main.load_keybindings", return_value=({}, {})),
         patch("windowcharmer.main.logger") as log,
     ):
         thread_cls.return_value.is_alive.return_value = True
@@ -178,7 +178,7 @@ def test_run_daemon_can_be_called_twice() -> None:
         patch("windowcharmer.main.SuperPassthroughTracker"),
         patch("windowcharmer.main.RebindScheduler"),
         patch("windowcharmer.main.DisplayPool"),
-        patch("windowcharmer.main.load_keybindings", return_value={}),
+        patch("windowcharmer.main.load_keybindings", return_value=({}, {})),
     ):
         thread_cls.return_value.is_alive.return_value = False
 

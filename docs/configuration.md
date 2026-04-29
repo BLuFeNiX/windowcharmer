@@ -23,9 +23,13 @@ If the file doesn't exist, WindowCharmer starts with defaults and no error is lo
 
 ---
 
-## [keybindings]
+## [keybindings] and [shift_keybindings]
 
-All configuration lives under the `[keybindings]` section. Unknown top-level sections are logged as warnings.
+Plain Super+key bindings go under `[keybindings]`. Super+Shift+key bindings
+go under `[shift_keybindings]`. Both tables share the same key-name and
+action-string conventions; the daemon registers a separate X11 passive grab
+for each modifier set, so a key may appear in both with different actions.
+Unknown top-level sections are logged as warnings.
 
 ```toml
 [keybindings]
@@ -33,6 +37,10 @@ All configuration lives under the `[keybindings]` section. Unknown top-level sec
 F1 = "center"
 # Super+F2 → tile left
 F2 = "left"
+
+[shift_keybindings]
+# Super+Shift+F3 → focus the front-most right tile
+F3 = "focus-right"
 ```
 
 Keys are X11 keysym names (case-sensitive). Invalid action strings or unknown key names are logged as warnings and skipped — the daemon keeps running with the remaining bindings.
@@ -55,6 +63,9 @@ Keys are X11 keysym names (case-sensitive). Invalid action strings or unknown ke
 | `bigger` | Widen the center column one step |
 | `smaller` | Narrow the center column one step |
 | `cycle` | Alt-tab among windows that share the focused window's zone (or, if the focused window is floating, among other floating windows). A fresh chord activates the second-from-top bucket member; holding Super and pressing the chord again walks the cursor deeper through the bucket; releasing Super resets so the next press starts from second-from-top again |
+| `focus-left` | Focus the front-most tiled window on the left (matches `left`, `left-center`, `top-left`, `bottom-left`). No-op if no left-tiled window exists. Bind under `[shift_keybindings]` |
+| `focus-right` | Focus the front-most tiled window on the right (matches `right`, `right-center`, `top-right`, `bottom-right`). Bind under `[shift_keybindings]` |
+| `focus-center` | Focus the front-most tiled window that touches the centre column (matches `center`, `left-center`, `right-center`, `top-center`, `bottom-center`). Bind under `[shift_keybindings]` |
 | `exit` | Stop the WindowCharmer daemon |
 
 ### Supported Key Names

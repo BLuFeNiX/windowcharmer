@@ -75,6 +75,9 @@ For automatic startup on login, add `windowcharmer` to your desktop environment'
 | `Right` | `right` — right column |
 | `space` | `restore` — unmaximize |
 | `Tab` | `cycle` — alt-tab among same-zone (or same-floating-bucket) windows: tap once for second-from-top, hold Super and tap again to walk deeper |
+| `Shift`+`Left` | `focus-left` — focus the front-most tile on the left (left, left-center, top-left, bottom-left) |
+| `Shift`+`Right` | `focus-right` — focus the front-most tile on the right |
+| `Shift`+`Down` | `focus-center` — focus the front-most tile that touches the centre column |
 | Numpad `7` (`KP_Home`) | `top-left` |
 | Numpad `8` (`KP_Up`) | `top-center` |
 | Numpad `9` (`KP_Page_Up`) | `top-right` |
@@ -105,7 +108,12 @@ F2 = "left"
 
 Supported action strings:
 `left`, `right`, `center`, `top-left`, `bottom-left`, `top-right`, `bottom-right`,
-`top-center`, `bottom-center`, `max`, `restore`, `bigger`, `smaller`, `cycle`, `exit`
+`top-center`, `bottom-center`, `max`, `restore`, `bigger`, `smaller`, `cycle`,
+`focus-left`, `focus-right`, `focus-center`, `exit`
+
+Bindings live under two TOML tables: `[keybindings]` for plain Super+key,
+`[shift_keybindings]` for Super+Shift+key. Defaults bind the focus actions
+to Super+Shift+Left/Right/Down (and the matching numpad keys).
 
 Key names follow X11 keysym convention (e.g. `Up`, `KP_Home`, `F1`, `space`). Invalid action strings or unknown key names are logged as warnings and skipped — the daemon keeps running with the remaining bindings.
 

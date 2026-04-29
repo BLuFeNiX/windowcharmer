@@ -119,9 +119,14 @@ class InputManager:
         passthrough_tracker: SuperPassthroughTracker,
         on_keymap_change: Callable[[], None],
         on_keyboard_hotplug: Callable[[], None],
+        shift_key_actions: dict[str, Callable[[int], None]] | None = None,
     ) -> None:
         self.dpy = dpy
         self.key_actions = key_actions
+        # Super+Shift+key bindings — separate table because chord matching
+        # at the X11 grab level differentiates Mod4 from Mod4|Shift, and
+        # we want each modifier combo to dispatch its own action.
+        self.shift_key_actions = shift_key_actions or {}
         self.passthrough_tracker = passthrough_tracker
         self.on_keymap_change = on_keymap_change
         self.on_keyboard_hotplug = on_keyboard_hotplug
@@ -132,6 +137,9 @@ class InputManager:
         # messages so Mutter's focus-stealing prevention accepts the
         # request as a recent user gesture rather than dropping it.
         self._keycode_actions: dict[int, Callable[[int], None]] = {}
+        # Same shape, for chords that included Shift. Lookup at dispatch
+        # time is gated on the Shift bit in the event's effective mods.
+        self._shift_keycode_actions: dict[int, Callable[[int], None]] = {}
         self._xtest_devices: frozenset[int] = frozenset()
         self._stopped = False
         self._wake_r = -1
@@ -213,9 +221,34 @@ class InputManager:
                 os.write(self._wake_w, b"x")
 
     def _grab_tile_keys(self, root: Window) -> None:
-        """Place XI2 passive grabs on every configured chord."""
-        modifiers = [X.Mod4Mask | lock for lock in _IGNORED_LOCKS]
-        for key_name, action in self.key_actions.items():
+        """Place XI2 passive grabs on every configured chord.
+
+        Grabs are placed twice: once with ``Mod4`` for the plain
+        Super+key bindings and once with ``Mod4|Shift`` for the
+        Super+Shift+key bindings. The X server matches modifier sets
+        exactly (modulo lock-state combinations), so the two grabs are
+        independent — Super+Up and Super+Shift+Up dispatch to different
+        actions without interfering with each other.
+        """
+        self._grab_chord_table(root, X.Mod4Mask, self.key_actions, self._keycode_actions, label="Mod4")
+        self._grab_chord_table(
+            root,
+            X.Mod4Mask | X.ShiftMask,
+            self.shift_key_actions,
+            self._shift_keycode_actions,
+            label="Mod4+Shift",
+        )
+
+    def _grab_chord_table(
+        self,
+        root: Window,
+        base_modifier: int,
+        key_actions: dict[str, Callable[[int], None]],
+        keycode_table: dict[int, Callable[[int], None]],
+        label: str,
+    ) -> None:
+        modifiers = [base_modifier | lock for lock in _IGNORED_LOCKS]
+        for key_name, action in key_actions.items():
             keysym = XK.string_to_keysym(key_name)
             if not keysym:
                 logger.warning("Unknown key name %r — skipping grab", key_name)
@@ -224,7 +257,7 @@ class InputManager:
             if not keycode:
                 logger.warning("Key %r has no keycode in current keymap — skipping", key_name)
                 continue
-            self._keycode_actions[keycode] = action
+            keycode_table[keycode] = action
             reply = root.xinput_grab_keycode(
                 deviceid=xinput.AllMasterDevices,
                 time=X.CurrentTime,
@@ -232,7 +265,7 @@ class InputManager:
                 grab_mode=xinput.GrabModeAsync,
                 paired_device_mode=xinput.GrabModeAsync,
                 # owner_events=False so the focused window doesn't ALSO see
-                # Super+Up — we want exclusive delivery to the daemon.
+                # the chord — we want exclusive delivery to the daemon.
                 owner_events=False,
                 event_mask=xinput.KeyPressMask,
                 modifiers=modifiers,
@@ -248,18 +281,23 @@ class InputManager:
                 failed = []
             if failed:
                 logger.warning(
-                    "Could not grab Mod4+%s (keycode=%d) — another client likely "
+                    "Could not grab %s+%s (keycode=%d) — another client likely "
                     "owns this chord (Cinnamon shortcut, input-method trigger, "
                     "xkb option, etc.). Rebind in ~/.config/windowcharmer/config.toml "
                     "or unbind the conflicting client. Failed combos: %s",
+                    label,
                     key_name,
                     keycode,
                     [hex(getattr(c, "modifiers", 0)) for c in failed],
                 )
 
     def _ungrab_tile_keys(self, root: Window) -> None:
-        modifiers = [X.Mod4Mask | lock for lock in _IGNORED_LOCKS]
-        for keycode in list(self._keycode_actions.keys()):
+        self._ungrab_chord_table(root, X.Mod4Mask, self._keycode_actions)
+        self._ungrab_chord_table(root, X.Mod4Mask | X.ShiftMask, self._shift_keycode_actions)
+
+    def _ungrab_chord_table(self, root: Window, base_modifier: int, table: dict[int, Callable[[int], None]]) -> None:
+        modifiers = [base_modifier | lock for lock in _IGNORED_LOCKS]
+        for keycode in list(table.keys()):
             try:
                 root.xinput_ungrab_keycode(
                     deviceid=xinput.AllMasterDevices,
@@ -268,7 +306,7 @@ class InputManager:
                 )
             except Exception as e:
                 logger.debug("Failed to ungrab keycode %d: %s", keycode, e)
-        self._keycode_actions.clear()
+        table.clear()
 
     def _run_loop(self) -> None:
         x_fd = self.dpy.fileno()
@@ -312,15 +350,29 @@ class InputManager:
 
     def _handle_grabbed_chord(self, data: Any) -> None:
         """Regular XI KeyPress arrives only when our passive grab fires —
-        tile chord match by keycode and dispatch."""
+        tile chord match by keycode and dispatch.
+
+        Two grab tables exist: one for Mod4+key, one for Mod4+Shift+key.
+        We pick which to look the keycode up in based on the Shift bit
+        in the event's effective modifier mask. The X server only
+        delivers events matching one of our registered modifier sets,
+        so this is a clean shift-or-no-shift two-way split.
+        """
         # Synthetic events shouldn't reach us via passive grab (xtest goes
         # through master like real input, but our grab modifier requirement
         # filters most synthesis), but check anyway for safety.
         if data.sourceid in self._xtest_devices:
             return
-        if data.detail in self._keycode_actions:
-            logger.debug("Chord matched: keycode=%d time=%d", data.detail, data.time)
-            self._keycode_actions[data.detail](data.time)
+        shift_held = bool(data.mods.effective_mods & X.ShiftMask)
+        table = self._shift_keycode_actions if shift_held else self._keycode_actions
+        if data.detail in table:
+            logger.debug(
+                "Chord matched: keycode=%d shift=%s time=%d",
+                data.detail,
+                shift_held,
+                data.time,
+            )
+            table[data.detail](data.time)
 
     def _handle_raw_key_event(self, evtype: int, data: Any) -> None:
         """Raw events fire before focus/grab dispatch — every key on every
